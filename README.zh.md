@@ -1,8 +1,12 @@
 # AuraSaaS
 
+[English](README.md)
+
 开源 AI 商业智能 Agent 平台，面向多门店连锁经营场景。
 
 AuraSaaS 集成了 LangGraph Agent 工作流编排、RAG 知识检索、5 级 Tool Calling 权限体系、人工审批（HITL）机制和全链路执行追踪，前端基于 Vue 3 仪表盘，后端基于 FastAPI。
+
+![AuraSaaS 仪表盘](assets/readme/01-dashboard-overview.png)
 
 ## 核心特性
 
@@ -11,6 +15,8 @@ AuraSaaS 集成了 LangGraph Agent 工作流编排、RAG 知识检索、5 级 To
 - **双模式自动路由** — 统一入口 `/api/agent/stream` 通过 LLM + 关键词双通道将用户问题分类为 **11 种意图**，高风险意图（营销方案、异常诊断、报告生成等）走 LangGraph 管线 + HITL 审批，快速查询（数据查看、知识问答等）走 ReAct Agent 自主工具调用。
 - **10 节点 LangGraph 管线** — Phase 1：`intent_router → data_analyst → fetch_context → rag_strategist → risk_controller → human_approval`；Phase 2（审批通过后）：`copywriter → report_generator`。条件边根据意图自动跳过无关节点。
 - **ReAct Agent 循环** — Think-Act-Observe 模式，最多 12 轮迭代，自主选择工具，支持多轮对话上下文。
+
+![Agent Pipeline](assets/readme/02-agent-pipeline.png)
 
 ### RAG 知识检索
 
@@ -58,6 +64,8 @@ AuraSaaS 集成了 LangGraph Agent 工作流编排、RAG 知识检索、5 级 To
 - **限流**：全端点请求频率控制。
 - **成本熔断**：LLM Token 累计费用达到 `AGENT_BUDGET_YUAN` 自动拦截后续请求。
 - **统一响应**：所有 API 返回 `{code, data, message}` 信封格式；SSE 使用类型化事件流。
+
+![AI 分析页面](assets/readme/03-ai-analysis-page.png)
 
 ## 架构总览
 
@@ -114,11 +122,11 @@ LangGraph Phase 2 (通过 /stream-resume):
 ### 1. 克隆并配置
 
 ```bash
-git clone <repo-url> && cd AuraSaaS
+git clone https://github.com/Enndme-KK/AuraSaaS.git && cd AuraSaaS
 cp .env.example .env
 ```
 
-编辑 `.env`，将 `DEEPSEEK_API_KEY` 设置为你的 API Key。保留 `sk-placeholder` 可进入演示模式，Agent 将使用模板降级回复。
+编辑 `.env`，将 `DEEPSEEK_API_KEY` 设置为你的 API Key。保留占位符可进入演示模式，Agent 将使用模板降级回复。
 
 ### 2. 启动后端
 
@@ -147,7 +155,7 @@ npm run dev
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DEEPSEEK_API_KEY` | `sk-placeholder` | LLM API Key，占位符启用演示模式 |
+| `DEEPSEEK_API_KEY` | `your-deepseek-api-key` | LLM API Key，占位符启用演示模式 |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | LLM API 地址 |
 | `OPENAI_API_BASE` | `https://api.deepseek.com` | 备选 API 地址 |
 | `DATABASE_URL` | `sqlite:///./aura.db` | 数据库连接 URL |
@@ -257,3 +265,15 @@ npm run lint
 ## 开源协议
 
 MIT License。详见 [LICENSE](LICENSE)。
+
+## 界面展示
+
+![报表页面](assets/readme/05-reports.png)
+
+![商品页面](assets/readme/06-products.png)
+
+![门店页面](assets/readme/07-stores.png)
+
+![营销页面](assets/readme/08-marketing.png)
+
+![财务页面](assets/readme/09-finance.png)

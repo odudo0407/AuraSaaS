@@ -1,8 +1,12 @@
 # AuraSaaS
 
+[中文版](README.zh.md)
+
 Open-source AI-powered Business Intelligence Agent platform for multi-store operations.
 
 AuraSaaS integrates LangGraph agent orchestration, RAG knowledge retrieval, a 5-tier tool-calling system, human-in-the-loop (HITL) approval, and full execution traceability — all exposed through a Vue 3 dashboard and FastAPI backend.
+
+![AuraSaaS Dashboard](assets/readme/01-dashboard-overview.png)
 
 ## Features
 
@@ -11,6 +15,8 @@ AuraSaaS integrates LangGraph agent orchestration, RAG knowledge retrieval, a 5-
 - **Dual-mode execution** — a unified `/api/agent/stream` endpoint classifies user queries into **11 intent types** via LLM + keyword fallback, then auto-routes to either a LangGraph pipeline (for high-risk operations with HITL) or a ReAct agent (for fast autonomous tool-calling).
 - **10-node LangGraph pipeline** — `intent_router → data_analyst → fetch_context → rag_strategist → risk_controller → human_approval` (Phase 1), followed by `copywriter → report_generator` (Phase 2, post-approval). Conditional edges skip irrelevant nodes based on intent.
 - **ReAct agent loop** — think-act-observe pattern with up to 12 iterations, autonomous tool selection, and multi-turn conversation history.
+
+![Agent Pipeline](assets/readme/02-agent-pipeline.png)
 
 ### RAG Knowledge Retrieval
 
@@ -58,6 +64,8 @@ AuraSaaS integrates LangGraph agent orchestration, RAG knowledge retrieval, a 5-
 - **Rate limiting**: per-endpoint request throttling.
 - **Cost guard**: cumulative LLM token budget (`AGENT_BUDGET_YUAN`); requests are intercepted before exceeding the limit.
 - **Consistent API**: all responses follow `{code, data, message}` envelope; SSE uses typed event streams.
+
+![AI Analysis Page](assets/readme/03-ai-analysis-page.png)
 
 ## Architecture
 
@@ -114,11 +122,11 @@ LangGraph Phase 2 (via /stream-resume):
 ### 1. Clone and configure
 
 ```bash
-git clone <repo-url> && cd AuraSaaS
+git clone https://github.com/Enndme-KK/AuraSaaS.git && cd AuraSaaS
 cp .env.example .env
 ```
 
-Edit `.env` and set `DEEPSEEK_API_KEY` to your API key. Leave it as `sk-placeholder` for demo mode — the agent will serve template-based fallback responses.
+Edit `.env` and set `DEEPSEEK_API_KEY` to your API key. Leave it as the placeholder for demo mode — the agent will serve template-based fallback responses.
 
 ### 2. Backend
 
@@ -147,7 +155,7 @@ Open `http://localhost:3000`, register an account, and start exploring.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEEPSEEK_API_KEY` | `sk-placeholder` | LLM API key; placeholder enables demo mode |
+| `DEEPSEEK_API_KEY` | `your-deepseek-api-key` | LLM API key; placeholder enables demo mode |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | LLM API base URL |
 | `OPENAI_API_BASE` | `https://api.deepseek.com` | Alternative API base |
 | `DATABASE_URL` | `sqlite:///./aura.db` | SQLAlchemy database URL |
@@ -257,3 +265,15 @@ Contributions are welcome. Please open an issue to discuss proposed changes befo
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+## Screenshots
+
+![Reports Page](assets/readme/05-reports.png)
+
+![Products Page](assets/readme/06-products.png)
+
+![Stores Page](assets/readme/07-stores.png)
+
+![Marketing Page](assets/readme/08-marketing.png)
+
+![Finance Page](assets/readme/09-finance.png)
