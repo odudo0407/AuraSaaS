@@ -1,0 +1,31 @@
+{
+    "name":  "aurasaas-frontend",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "vite",
+                    "build":  "vite build",
+                    "check":  "vite build",
+                    "preview":  "vite preview",
+                    "lint":  "node scripts/lint.mjs",
+                    "format:check":  "node scripts/format-check.mjs",
+                    "test":  "node --test",
+                    "test:run":  "node --test"
+                },
+    "dependencies":  {
+                         "echarts":  "^5.5.0",
+                         "marked":  "^12.0.2",
+                         "pinia":  "^2.2.0",
+                         "vue":  "^3.4.0",
+                         "vue-echarts":  "^7.0.0",
+                         "vue-router":  "^4.3.0"
+                     },
+    "devDependencies":  {
+                            "@unocss/preset-wind":  "^66.0.0",
+                            "@unocss/transformer-directives":  "^66.0.0",
+                            "@vitejs/plugin-vue":  "^5.2.0",
+                            "unocss":  "^66.0.0",
+                            "vite":  "^6.0.0"
+                        }
+}
