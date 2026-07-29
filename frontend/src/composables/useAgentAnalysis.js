@@ -29,12 +29,12 @@ const _translations = {
       { kicker: 'approve', title: '人工审批控制', desc: '高风险策略建议先经过审批再进入执行。', prompt: '起草一个需要店长审批的营销方案' },
     ],
     pipeline: {
-      intent_router: '意图', data_analyst: '数据', fetch_context: '环境',
+      skill_executor: 'Skill', intent_router: '意图', data_analyst: '数据', fetch_context: '环境',
       rag_strategist: 'RAG', risk_controller: '风险', human_approval: '审批',
       copywriter: '文案', data_editor: '数据', agent_form: '表格', general_chat: '直答', report_generator: '报告',
     },
     eventTitles: {
-      intent_router: '意图识别', data_analyst: '数据诊断', fetch_context: '外部环境',
+      skill_executor: 'Skill 执行', intent_router: '意图识别', data_analyst: '数据诊断', fetch_context: '外部环境',
       rag_strategist: 'RAG 策略', risk_controller: '风险评估', human_approval: '审批门',
       copywriter: '营销文案', data_editor: '数据编辑', agent_form: '经营表格', general_chat: '直接回答', report_generator: '最终报告',
     },
@@ -67,7 +67,7 @@ const _translations = {
       { kicker: 'approve', title: 'Human approval', desc: 'Route risky strategies to approval before execution.', prompt: 'Draft a marketing plan that requires store manager approval' },
     ],
     pipeline: {
-      intent_router: 'Intent', data_analyst: 'Data', fetch_context: 'Context',
+      skill_executor: 'Skill', intent_router: 'Intent', data_analyst: 'Data', fetch_context: 'Context',
       rag_strategist: 'RAG', risk_controller: 'Risk', human_approval: 'Approval',
       copywriter: 'Copy', data_editor: 'Data', agent_form: 'Form', general_chat: 'Answer', report_generator: 'Report',
     },
@@ -117,7 +117,11 @@ export function useAgentAnalysis() {
   const recentTraces = ref([])
   const selectedTrace = ref(null)
 
+  const skills = ref([])
+  const activeSkillId = ref(null)
+
   const pipeline = reactive([
+    { id: 'skill_executor', status: 'pending' },
     { id: 'intent_router', status: 'pending' },
     { id: 'data_analyst', status: 'pending' },
     { id: 'fetch_context', status: 'pending' },
@@ -188,6 +192,13 @@ export function useAgentAnalysis() {
   }
 
   // --- data loading ---
+  async function fetchSkills() {
+    try {
+      const data = await request('/api/skills')
+      skills.value = data?.data?.skills || []
+    } catch { skills.value = [] }
+  }
+
   async function loadStores() {
     try { const r = await request('/api/dashboard/stores'); storeList.value = r.data || [] } catch { storeList.value = [] }
   }
@@ -277,10 +288,31 @@ export function useAgentAnalysis() {
       const body = { query, history }
       if (selectedStoreId.value) body.store_id = selectedStoreId.value
 
+      // Pass user-configured API key / base URL / model from Settings page
+      const savedKey = localStorage.getItem('aura_apiKey')
+      const savedUrl = localStorage.getItem('aura_baseUrl')
+      const savedModel = localStorage.getItem('aura_model')
+      if (savedKey) body.api_key = savedKey
+      if (savedUrl) body.base_url = savedUrl
+      if (savedModel) body.model = savedModel
+
       // Auto-route endpoint: LangGraph (HITL) for high-risk, ReAct for quick queries
       const url = '/api/agent/stream'
       for await (const event of streamSSE(url, { method: 'POST', body: JSON.stringify(body) })) {
         if (event.trace_id) aiMessage.traceId = event.trace_id
+        if (event.type === 'error') {
+          aiMessage.status = 'error'
+          aiMessage.errorContent = event.content || '未知错误'
+          aiMessage.sections.push({
+            id: crypto.randomUUID(),
+            node: event.node || 'report_generator',
+            title: event.title || '❌ 执行异常',
+            content: event.content || '',
+            type: 'error',
+          })
+          streamingStatus.value = '执行异常'
+          break
+        }
         if (event.node === 'end') {
           if (event.awaiting_approval) {
             aiMessage.status = 'awaiting_approval'
@@ -405,6 +437,7 @@ export function useAgentAnalysis() {
     storeList, selectedStoreId, selectedStoreName, showStoreDropdown,
     ragDocs, ragSearchQuery, ragSearchResults,
     recentTraces, selectedTrace,
+    skills, activeSkillId, fetchSkills,
     pipeline, quickPrompts, capabilities,
     agentLabel, eventTitle, statusLabel, statusClass, messageStatus,
     selectStore, startNewChat, loadChat, saveCurrentChat,

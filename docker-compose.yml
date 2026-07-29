@@ -12,6 +12,7 @@ services:
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.deepseek.com}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/aura.db}
+      - REDIS_URL=${REDIS_URL:-}
       - CHROMA_DIR=${CHROMA_DIR:-./data/chroma}
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
     volumes:
@@ -36,3 +37,26 @@ services:
 
 volumes:
   backend-data:
+  # postgres-data:
+  # redis-data:
+
+  # ── Uncomment for production PostgreSQL + Redis ──────────────────────────
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: aurasaas
+  #     POSTGRES_PASSWORD: ${PG_PASSWORD:-aurasaas}
+  #     POSTGRES_DB: aurasaas
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   restart: unless-stopped

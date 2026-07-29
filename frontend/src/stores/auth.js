@@ -20,6 +20,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    localStorage.removeItem('aura_apiKey')
+    localStorage.removeItem('aura_baseUrl')
+    localStorage.removeItem('aura_model')
   }
 
   async function register(username, email, password) {

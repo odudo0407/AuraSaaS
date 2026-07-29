@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 INPUT_PRICE_PER_1M  = 1.02   # ¥ per 1 000 000 prompt tokens
 OUTPUT_PRICE_PER_1M = 2.04   # ¥ per 1 000 000 completion tokens
 
-_DEFAULT_BUDGET = float(os.getenv("AGENT_BUDGET_YUAN", "0.02"))
+_DEFAULT_BUDGET = float(os.getenv("AGENT_BUDGET_YUAN", "0.50"))
 
 
 class BudgetExceededError(RuntimeError):
@@ -129,40 +129,61 @@ def reset_cost() -> None:
 
 MODEL_MAP = {
     "deepseek-v3":       "deepseek-chat",
-    "deepseek-chat":     "deepseek-chat",
+    "deepseek-chat":     "deepseek-v4-pro",
     "deepseek-r1":       "deepseek-reasoner",
     "deepseek-reasoner": "deepseek-reasoner",
-    "deepseek-v4":       "deepseek-chat",
-    "deepseek-v4-pro":   "deepseek-chat",
+    "deepseek-v4":       "deepseek-v4-pro",
+    "deepseek-v4-pro":   "deepseek-v4-pro",
+    "deepseek-v4-flash": "deepseek-v4-flash",
 }
 
 MODEL_LABELS = {
-    "deepseek-chat":     "DeepSeek-V3",
-    "deepseek-reasoner": "DeepSeek-R1",
-    "deepseek-v3":       "DeepSeek-V3",
-    "deepseek-r1":       "DeepSeek-R1",
-    "deepseek-v4":       "DeepSeek-V4",
     "deepseek-v4-pro":   "DeepSeek-V4 Pro",
+    "deepseek-v4-flash": "DeepSeek-V4 Flash",
+    "deepseek-chat":     "DeepSeek-V3 (Legacy)",
+    "deepseek-reasoner": "DeepSeek-R1",
+    "deepseek-v3":       "DeepSeek-V3 (Legacy)",
+    "deepseek-r1":       "DeepSeek-R1",
+    "deepseek-v4":       "DeepSeek-V4 Pro",
 }
 
 
 def resolve_model(model: str) -> str:
-    return MODEL_MAP.get(model, "deepseek-chat")
+    return MODEL_MAP.get(model, "deepseek-v4-pro")
 
 
 def get_model_label(model: str) -> str:
     return MODEL_LABELS.get(model, model)
 
 
+# ── Per-request API key override (set by agent.py before stream) ──────────
+_request_api_key: str | None = None
+_request_base_url: str | None = None
+_request_model: str | None = None
+
+
+def set_request_context(api_key: str | None = None, base_url: str | None = None, model: str | None = None) -> None:
+    """Set per-request API credentials. Called by agent endpoints before streaming."""
+    global _request_api_key, _request_base_url, _request_model
+    _request_api_key = api_key or None
+    _request_base_url = base_url or None
+    _request_model = model or None
+
+
+def clear_request_context() -> None:
+    """Clear per-request context after stream completes."""
+    set_request_context(None, None, None)
+
+
 def get_client(api_key: str | None = None, base_url: str | None = None) -> OpenAI:
-    key = api_key or os.getenv("DEEPSEEK_API_KEY") or settings.deepseek_api_key
-    url = base_url or os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_API_BASE") or settings.deepseek_base_url
+    key = api_key or _request_api_key or os.getenv("DEEPSEEK_API_KEY") or settings.deepseek_api_key
+    url = base_url or _request_base_url or os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_API_BASE") or settings.deepseek_base_url
     http_client = httpx.Client(trust_env=False)
     return OpenAI(api_key=key, base_url=url, http_client=http_client)
 
 
 def has_valid_api_key() -> bool:
-    key = os.getenv("DEEPSEEK_API_KEY") or settings.deepseek_api_key
+    key = _request_api_key or os.getenv("DEEPSEEK_API_KEY") or settings.deepseek_api_key
     if not key:
         return False
     return key.strip() not in {"sk-placeholder", "sk-your-key-here", "sk-xxxx", "your-key", ""}

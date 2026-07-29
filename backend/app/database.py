@@ -1,4 +1,4 @@
-"""Database engine & session factory for AuraSaaS."""
+"""Database engine & session factory for AuraSaaS — SQLite (dev) and PostgreSQL (prod)."""
 
 from sqlalchemy import create_engine
 from sqlalchemy import text
@@ -8,11 +8,21 @@ from app.core.config import get_settings
 settings = get_settings()
 SQLALCHEMY_DATABASE_URL = settings.database_url
 
-connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args=connect_args,
-)
+_is_sqlite = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
+
+if _is_sqlite:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -20,13 +30,13 @@ Base = declarative_base()
 
 
 def ensure_demo_schema():
-    """Apply tiny compatibility patches for existing local SQLite demo DBs."""
+    """Create all tables if missing; apply SQLite-specific compatibility patches."""
 
     from app.models.models import TenantKnowledgeDocument
 
     Base.metadata.create_all(bind=engine, tables=[TenantKnowledgeDocument.__table__])
 
-    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    if not _is_sqlite:
         return
 
     with engine.begin() as conn:
@@ -38,7 +48,6 @@ def ensure_demo_schema():
         if trace_columns and "graph_state" not in trace_columns:
             conn.execute(text("ALTER TABLE agent_traces ADD COLUMN graph_state TEXT"))
 
-        # ensure composite indexes for frequent query patterns
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_metrics_store_date ON business_metrics_daily(store_id, date)"
         ))

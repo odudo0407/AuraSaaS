@@ -7,8 +7,8 @@
       </div>
       <div class="flex gap-2 items-center">
         <StoreSelector @change="onStoreChange" />
-        <select class="bg-canvas border border-hairline rounded-lg px-3 py-2 text-sm text-ink outline-none">
-          <option>最近7天</option><option>最近30天</option><option>最近90天</option>
+        <select v-model="timeRange" @change="onTimeRangeChange" class="bg-canvas border border-hairline rounded-lg px-3 py-2 text-sm text-ink outline-none">
+          <option v-for="opt in timeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
         <button @click="exportExcel"
           class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-active transition-colors">
@@ -18,17 +18,17 @@
     </div>
 
     <!-- Tabs -->
-    <div class="flex gap-6 border-b border-hairline mb-6">
-      <span v-for="tab in tabs" :key="tab.key"
-        class="pb-3 text-sm font-medium cursor-pointer transition-colors"
-        :class="activeTab === tab.key ? 'text-ink border-b-2 border-ink' : 'text-muted hover:text-ink'"
+    <div class="flex gap-3 mb-6">
+      <div v-for="tab in tabs" :key="tab.key"
+        class="flex items-center justify-center px-5 py-2 rounded-lg border cursor-pointer transition-colors text-sm font-medium"
+        :class="activeTab === tab.key ? 'border-ink text-ink' : 'border-hairline text-muted hover:text-ink hover:border-ink'"
         @click="activeTab = tab.key">
         {{ tab.label }}
-      </span>
+      </div>
     </div>
 
     <!-- Revenue Analysis -->
-    <div v-if="activeTab === 'revenue'" class="grid grid-cols-2 gap-6">
+    <div v-show="activeTab === 'revenue'" class="grid grid-cols-2 gap-6">
       <div class="bg-canvas border border-hairline rounded-xl p-5">
         <div class="text-sm font-semibold text-ink mb-4">日营收趋势</div>
         <div ref="revenueChart" class="w-full h-56"></div>
@@ -58,7 +58,7 @@
     </div>
 
     <!-- SKU Analysis -->
-    <div v-if="activeTab === 'sku'" class="bg-canvas border border-hairline rounded-xl p-5">
+    <div v-show="activeTab === 'sku'" class="bg-canvas border border-hairline rounded-xl p-5">
       <div class="text-sm font-semibold text-ink mb-4">SKU 表现分析</div>
       <table class="w-full">
         <thead><tr class="border-b border-hairline-soft">
@@ -80,7 +80,7 @@
     </div>
 
     <!-- Channel Analysis -->
-    <div v-if="activeTab === 'channel'" class="grid grid-cols-3 gap-6">
+    <div v-show="activeTab === 'channel'" class="grid grid-cols-3 gap-6">
       <div v-for="ch in channels" :key="ch.name"
         class="bg-canvas border border-hairline rounded-xl p-5">
         <div class="flex items-center gap-3 mb-4">
@@ -107,14 +107,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
 import { request as apiRequest } from '../utils/request'
 import StoreSelector from '../components/StoreSelector.vue'
 
 const activeTab = ref('revenue')
-const exportMsg = ref('')
 const currentStoreId = ref(null)
+const timeRange = ref(30)
+const timeOptions = [
+  { value: 7, label: '最近7天' },
+  { value: 30, label: '最近30天' },
+  { value: 90, label: '最近90天' },
+]
 
 async function exportExcel() {
   try {
@@ -123,15 +128,12 @@ async function exportExcel() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `report_${new Date().toISOString().slice(0,10)}.xlsx`
+    a.download = 'report_' + new Date().toISOString().slice(0, 10) + '.xlsx'
     a.click()
     URL.revokeObjectURL(url)
-    exportMsg.value = '导出成功'
-  } catch (e) {
-    exportMsg.value = '导出失败: ' + e.message
-  }
-  setTimeout(() => { exportMsg.value = '' }, 3000)
+  } catch { /* ignore */ }
 }
+
 const revenueChart = ref(null)
 const categoryChart = ref(null)
 
@@ -141,42 +143,57 @@ const tabs = [
   { key: 'channel', label: '渠道分析' },
 ]
 
-const weekDays = ['周一','周二','周三','周四','周五','周六','周日']
+// --- Heatmap ---
+const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const hours = Array.from({ length: 17 }, (_, i) => i + 6)
-const heatmapData = ref({})
+
+function buildFallbackHeatmap() {
+  const map = {}
+  for (let d = 0; d < 7; d++) {
+    const dowBase = d >= 5 ? 0.6 : 0.3
+    for (let h = 6; h <= 22; h++) {
+      const hourBase = h >= 6 && h <= 9 ? 0.3 : h >= 11 && h <= 13 ? 0.45 : h >= 17 && h <= 20 ? 0.38 : 0.12
+      const seed = ((d * 31 + h * 17) % 100) / 100
+      map[d + '-' + h] = (dowBase + hourBase + seed * 0.15) * 100
+    }
+  }
+  return { map, max: 100 }
+}
+
+const heatmapData = ref(buildFallbackHeatmap())
 
 async function fetchHeatmap() {
   try {
-    const qs = currentStoreId.value ? `?store_id=${currentStoreId.value}` : ''
-    const res = await apiRequest(`/api/dashboard/heatmap${qs}`)
+    const params = ['days=' + timeRange.value]
+    if (currentStoreId.value) params.push('store_id=' + currentStoreId.value)
+    const res = await apiRequest('/api/dashboard/traffic-heatmap?' + params.join('&'))
     const data = res.data || []
     if (data.length > 0) {
       const map = {}
       let maxOrders = 1
-      data.forEach(d => {
-        const key = `${d.day_of_week}-${d.hour}`
-        map[key] = d.orders
-        if (d.orders > maxOrders) maxOrders = d.orders
+      data.forEach(function (d) {
+        var key = d.day_of_week + '-' + d.hour
+        map[key] = (map[key] || 0) + d.orders
+        if (map[key] > maxOrders) maxOrders = map[key]
       })
-      heatmapData.value = { map, max: maxOrders }
+      heatmapData.value = { map: map, max: maxOrders }
+      return
     }
-  } catch { /* keep default random values */ }
+  } catch { /* use fallback */ }
+  heatmapData.value = buildFallbackHeatmap()
 }
 
 function getHeatValue(d, h) {
-  const { map, max } = heatmapData.value
-  if (!map || Object.keys(map).length === 0) {
-    const base = (d >= 5 ? 0.6 : 0.3) + (h >= 6 && h <= 9 ? 0.3 : h >= 11 && h <= 13 ? 0.4 : h >= 17 && h <= 20 ? 0.35 : 0.1)
-    return Math.min(1, base + Math.random() * 0.2)
-  }
-  const val = map[`${d}-${h}`] || 0
-  return val / max
+  var m = heatmapData.value
+  var val = m.map[d + '-' + h]
+  return val != null && m.max > 0 ? val / m.max : 0.3
 }
 function getHeatColor(d, h) {
-  const v = getHeatValue(d, h)
+  var v = getHeatValue(d, h)
   return v > 0.7 ? '#ff385c' : v > 0.5 ? '#ff6b81' : v > 0.3 ? '#ffa0ad' : '#ffd1da'
 }
 
+// --- SKU table (static fallback) ---
 const skuData = [
   { name: '招牌烤鸭', category: '热菜', avgSales: 35, revenue: '31,360', margin: 64.8, trend: 5.2, status: 'good' },
   { name: '冰美式', category: '饮品', avgSales: 48, revenue: '5,292', margin: 78.6, trend: -60, status: 'warning' },
@@ -196,70 +213,69 @@ const channels = [
   { name: '其他', icon: '📦', desc: '其他渠道', orders: '123', revenue: '8,900', pct: 2 },
 ]
 
+// --- ECharts ---
 let revenueChartInstance = null
 let categoryChartInstance = null
 
+function initChart(refEl, existing) {
+  if (existing && !existing.isDisposed()) existing.dispose()
+  if (!refEl) return null
+  var inst = echarts.init(refEl)
+  new ResizeObserver(function () {
+    if (inst && !inst.isDisposed()) inst.resize()
+  }).observe(refEl)
+  return inst
+}
+
 async function renderCharts() {
   await nextTick()
-  // Revenue trend chart
-  if (revenueChart.value) {
-    if (!revenueChartInstance) {
-      revenueChartInstance = echarts.init(revenueChart.value)
-      new ResizeObserver(() => revenueChartInstance?.resize()).observe(revenueChart.value)
-    }
+
+  revenueChartInstance = initChart(revenueChart.value, revenueChartInstance)
+  if (revenueChartInstance) {
     try {
-      const params = ['days=30']
-      if (currentStoreId.value) params.push(`store_id=${currentStoreId.value}`)
-      const res = await apiRequest(`/api/dashboard/trends?${params.join('&')}`)
-      const dates = (res.data?.dates || []).map(d => d.slice(5))
-      const revenue = res.data?.revenue || []
+      var params = ['days=' + timeRange.value]
+      if (currentStoreId.value) params.push('store_id=' + currentStoreId.value)
+      var res = await apiRequest('/api/dashboard/trends?' + params.join('&'))
+      var dates = (res.data?.dates || []).map(function (d) { return d.slice(5) })
+      var revenue = res.data?.revenue || []
       revenueChartInstance.setOption({
-        backgroundColor: 'transparent', grid: { top: 10, right: 10, bottom: 24, left: 50 },
+        grid: { top: 10, right: 10, bottom: 24, left: 50 },
         tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: dates.length ? dates : Array.from({length:30},(_,i)=>`${i+1}`), axisLine:{lineStyle:{color:'#ddd'}}, axisTick:{show:false}, axisLabel:{color:'#929292',fontSize:11} },
-        yAxis: { type:'value', splitLine:{lineStyle:{color:'#ebebeb'}}, axisLabel:{color:'#929292',fontSize:11,formatter:v=>`¥${(v/1000).toFixed(0)}k`} },
-        series: [{ type:'line', data:revenue, smooth:true, symbol:'none', lineStyle:{color:'#ff385c',width:2}, areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,56,92,0.1)'},{offset:1,color:'rgba(255,56,92,0)'}])} }]
-      })
+        xAxis: { type: 'category', data: dates.length ? dates : Array.from({ length: timeRange.value }, function (_, i) { return String(i + 1) }), axisLabel: { color: '#929292', fontSize: 11 } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#ebebeb' } }, axisLabel: { color: '#929292', fontSize: 11, formatter: function (v) { return '¥' + (v / 1000).toFixed(0) + 'k' } } },
+        series: [{ type: 'line', data: revenue.length ? revenue : Array.from({ length: timeRange.value }, function (_, i) { return 18000 + Math.sin(i / 2) * 2800 + i * 170 }), smooth: true, symbol: 'none', lineStyle: { color: '#ff385c', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(255,56,92,0.1)' }, { offset: 1, color: 'rgba(255,56,92,0)' }]) } }]
+      }, { notMerge: true })
     } catch {
       revenueChartInstance.setOption({
-        backgroundColor: 'transparent', grid: { top: 10, right: 10, bottom: 24, left: 50 },
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: Array.from({length:30},(_,i)=>`${i+1}`), axisLine:{lineStyle:{color:'#ddd'}}, axisTick:{show:false}, axisLabel:{color:'#929292',fontSize:11} },
-        yAxis: { type:'value', splitLine:{lineStyle:{color:'#ebebeb'}}, axisLabel:{color:'#929292',fontSize:11,formatter:v=>`¥${(v/1000).toFixed(0)}k`} },
-        series: [{ type:'line', data:[28000,31000,29500,33000,35000,32000,36000,34000,38000,37000,35500,39000,41000,38500,40000,42000,39500,37000,35000,38000,40000,41500,43000,42000,44000,41000,39000,42500,44500,43000], smooth:true, symbol:'none', lineStyle:{color:'#ff385c',width:2}, areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(255,56,92,0.1)'},{offset:1,color:'rgba(255,56,92,0)'}])} }]
-      })
+        grid: { top: 10, right: 10, bottom: 24, left: 50 }, tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: Array.from({ length: timeRange.value }, function (_, i) { return String(i + 1) }), axisLabel: { color: '#929292', fontSize: 11 } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#ebebeb' } }, axisLabel: { color: '#929292', fontSize: 11, formatter: function (v) { return '¥' + (v / 1000).toFixed(0) + 'k' } } },
+        series: [{ type: 'line', data: Array.from({ length: timeRange.value }, function (_, i) { return 28000 + i * 500 + Math.sin(i / 3) * 2000 }), smooth: true, symbol: 'none', lineStyle: { color: '#ff385c', width: 2 }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(255,56,92,0.1)' }, { offset: 1, color: 'rgba(255,56,92,0)' }]) } }]
+      }, { notMerge: true })
     }
   }
 
-  // Category pie chart — from SKU data
-  if (categoryChart.value) {
-    if (!categoryChartInstance) {
-      categoryChartInstance = echarts.init(categoryChart.value)
-      new ResizeObserver(() => categoryChartInstance?.resize()).observe(categoryChart.value)
-    }
+  categoryChartInstance = initChart(categoryChart.value, categoryChartInstance)
+  if (categoryChartInstance) {
     try {
-      const params = ['limit=20']
-      if (currentStoreId.value) params.push(`store_id=${currentStoreId.value}`)
-      const res = await apiRequest(`/api/dashboard/top-skus?${params.join('&')}`)
-      const skuData = res.data || []
-      const catMap = {}
-      skuData.forEach(s => {
-        catMap[s.category] = (catMap[s.category] || 0) + s.total_sales
-      })
-      const colors = ['#ff385c', '#ff6b81', '#ffa0ad', '#ffd1da', '#ebebeb', '#c1c1c1']
-      const pieData = Object.entries(catMap).map(([name, value], i) => ({
-        value, name, itemStyle: { color: colors[i % colors.length] }
-      }))
+      var skuParams = ['limit=20']
+      if (currentStoreId.value) skuParams.push('store_id=' + currentStoreId.value)
+      var skuRes = await apiRequest('/api/dashboard/top-skus?' + skuParams.join('&'))
+      var skuRows = skuRes.data || []
+      var catMap = {}
+      skuRows.forEach(function (s) { catMap[s.category] = (catMap[s.category] || 0) + s.total_sales })
+      var colors = ['#ff385c', '#ff6b81', '#ffa0ad', '#ffd1da', '#ebebeb', '#c1c1c1']
+      var pieData = Object.entries(catMap).map(function (entry, i) { return { value: entry[1], name: entry[0], itemStyle: { color: colors[i % colors.length] } } })
       categoryChartInstance.setOption({
-        backgroundColor: 'transparent', tooltip: { trigger: 'item' },
-        series: [{ type: 'pie', radius: ['45%','75%'], center: ['50%','50%'], label: { show: true, color: '#6a6a6a', fontSize: 12 },
+        tooltip: { trigger: 'item' },
+        series: [{ type: 'pie', radius: ['45%', '75%'], center: ['50%', '50%'], label: { show: true, color: '#6a6a6a', fontSize: 12 },
           data: pieData.length ? pieData : [{ value: 1, name: '暂无数据', itemStyle: { color: '#ebebeb' } }]
         }]
-      })
+      }, { notMerge: true })
     } catch {
       categoryChartInstance.setOption({
-        backgroundColor: 'transparent', tooltip: { trigger: 'item' },
-        series: [{ type: 'pie', radius: ['45%','75%'], center: ['50%','50%'], label: { show: true, color: '#6a6a6a', fontSize: 12 },
+        tooltip: { trigger: 'item' },
+        series: [{ type: 'pie', radius: ['45%', '75%'], center: ['50%', '50%'], label: { show: true, color: '#6a6a6a', fontSize: 12 },
           data: [
             { value: 45, name: '热菜', itemStyle: { color: '#ff385c' } },
             { value: 25, name: '饮品', itemStyle: { color: '#ff6b81' } },
@@ -268,10 +284,18 @@ async function renderCharts() {
             { value: 5, name: '凉菜', itemStyle: { color: '#ebebeb' } },
           ]
         }]
-      })
+      }, { notMerge: true })
     }
   }
 }
+
+watch(activeTab, async function (tab) {
+  if (tab === 'revenue') {
+    await nextTick()
+    if (revenueChartInstance && !revenueChartInstance.isDisposed()) revenueChartInstance.resize()
+    if (categoryChartInstance && !categoryChartInstance.isDisposed()) categoryChartInstance.resize()
+  }
+})
 
 function onStoreChange(storeId) {
   currentStoreId.value = storeId
@@ -279,8 +303,20 @@ function onStoreChange(storeId) {
   renderCharts()
 }
 
-onMounted(() => {
+function onTimeRangeChange() {
   fetchHeatmap()
   renderCharts()
+}
+
+onMounted(function () {
+  renderCharts()
+  fetchHeatmap()
+})
+
+onUnmounted(function () {
+  if (revenueChartInstance && !revenueChartInstance.isDisposed()) revenueChartInstance.dispose()
+  if (categoryChartInstance && !categoryChartInstance.isDisposed()) categoryChartInstance.dispose()
+  revenueChartInstance = null
+  categoryChartInstance = null
 })
 </script>

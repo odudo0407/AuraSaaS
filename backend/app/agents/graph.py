@@ -43,6 +43,7 @@ from app.agents.tools import (
     list_all_stores,
 )
 from app.core.config import get_settings
+from app.core.performance import track_performance, set_perf_context
 from app.database import SessionLocal
 from app.models.models import AgentApproval, AgentMemory, AgentTrace
 from app.agents.nodes.data_analysis import run_data_analyst_node
@@ -59,6 +60,8 @@ class AgentState(TypedDict):
     store_id: NotRequired[int | None]
     date_range: NotRequired[dict]
     intent: NotRequired[str]
+    active_skill: NotRequired[str | None]
+    skill_knowledge_sources: NotRequired[list[str]]
     metrics: NotRequired[dict]
     anomalies: NotRequired[list]
     external_context: str
@@ -90,9 +93,32 @@ def _append_message(state: AgentState, node: str, content: str) -> list:
 
 
 def intent_router_node(state: AgentState) -> dict:
-    """Node 0: LLM-based intent classification with tool matching."""
+    """Node 0: Skill-aware intent classification.
+
+    1. Check SkillRegistry for a matching Skill (keyword-based, fast).
+    2. If matched → set active_skill + skill_knowledge_sources, skip LLM classification.
+    3. If no match → fall through to LLM-based intent classification as before.
+    """
 
     query = state["query"]
+
+    # ── Skill matching (keyword-based, runs before LLM) ──────────
+    from app.skills.registry import SkillRegistry
+
+    matched = SkillRegistry.match_intent(query)
+    if matched is not None:
+        logger.info("Skill matched: %s for query=%r", matched.name, query[:80])
+        return {
+            "intent": "skill:" + matched.name,
+            "active_skill": matched.name,
+            "skill_knowledge_sources": matched.knowledge_sources,
+            "tools_needed": matched.required_tools,
+            "current_node": "intent_router",
+            "messages": _append_message(
+                state, "intent_router",
+                f"skill: {matched.name} | {matched.description}",
+            ),
+        }
 
     system = """You are AuraSaaS's intent router. Classify the user request and return JSON only.
 
@@ -249,12 +275,17 @@ def _format_sop_results(results: list[dict]) -> str:
     )
 
 def rag_strategist_node(state: AgentState) -> dict:
-    """Node 3: Retrieve SOP/code context and generate grounded guidance."""
+    """Node 3: Retrieve SOP/code context and generate grounded guidance.
+
+    When a Skill is active, its knowledge_sources declare which ChromaDB
+    collections to query — each Skill gets isolated RAG access.
+    """
 
     query = state["query"]
     query_with_analysis = f"{query} {state.get('data_analysis', '')}".strip()
     use_code_rag = _is_code_query(query)
     use_sop_rag = _is_sop_query(query) or not use_code_rag
+    skill_sources = state.get("skill_knowledge_sources") or []
 
     code_results: list[dict] = []
     sop_docs: list[dict] = []
@@ -275,7 +306,18 @@ def rag_strategist_node(state: AgentState) -> dict:
             except Exception:
                 logger.exception("Tenant knowledge lookup failed tenant_id=%s query=%r", tenant_id, query)
                 tenant_docs = []
-        sop_docs = tenant_docs + query_knowledge(query_with_analysis, top_k=2)
+
+        # Skill-specific knowledge sources get priority
+        if skill_sources:
+            skill_docs: list[dict] = []
+            for collection in skill_sources:
+                try:
+                    skill_docs.extend(query_knowledge(query_with_analysis, top_k=3, collection=collection))
+                except Exception:
+                    logger.exception("Skill RAG lookup failed collection=%s", collection)
+            sop_docs = skill_docs + tenant_docs
+        else:
+            sop_docs = tenant_docs + query_knowledge(query_with_analysis, top_k=2)
 
     logger.info(
         "rag_strategist retrieval mode code=%s sop=%s code_hits=%d tenant_hits=%d sop_hits=%d query=%r",
@@ -553,11 +595,53 @@ def general_chat_node(state: AgentState) -> dict:
     }
 
 
+def skill_executor_node(state: AgentState) -> dict:
+    """Node: Execute the active Skill's workflow and return its output.
+
+    Looks up the Skill from SkillRegistry by ``active_skill`` name,
+    then calls the Skill's ``run(state)`` entry point.
+    If no active skill or skill not found, falls through to general_chat.
+    """
+    skill_name = state.get("active_skill")
+    if not skill_name:
+        return {
+            "final_report": "No active skill.",
+            "current_node": "skill_executor",
+            "messages": _append_message(state, "skill_executor", "No active skill"),
+        }
+
+    from app.skills.registry import SkillRegistry
+
+    skill = SkillRegistry.get(skill_name)
+    if skill is None:
+        logger.warning("Skill not found: %s", skill_name)
+        return {
+            "final_report": f"Skill '{skill_name}' not registered.",
+            "current_node": "skill_executor",
+            "messages": _append_message(state, "skill_executor", f"Skill not found: {skill_name}"),
+        }
+
+    logger.info("Executing skill: %s", skill_name)
+    try:
+        # Import the skill module and call its run() entry point
+        import importlib
+        module = importlib.import_module(f"app.skills.{skill_name}")
+        return module.run(state)
+    except Exception:
+        logger.exception("Skill execution failed: %s", skill_name)
+        return {
+            "final_report": f"Skill '{skill_name}' execution failed.",
+            "current_node": "skill_executor",
+            "messages": _append_message(state, "skill_executor", f"Skill failed: {skill_name}"),
+        }
+
+
 def build_graph():
     """Build the LangGraph StateGraph with conditional routing based on intent."""
 
     graph = StateGraph(AgentState)
     graph.add_node("intent_router", intent_router_node)
+    graph.add_node("skill_executor", skill_executor_node)
     graph.add_node("data_analyst", data_analyst_node)
     graph.add_node("fetch_context", fetch_external_context_node)
     graph.add_node("rag_strategist", rag_strategist_node)
@@ -570,8 +654,10 @@ def build_graph():
     graph.set_entry_point("intent_router")
 
     def route_after_intent(state: AgentState) -> str:
-        """Route based on intent: knowledge->RAG, data_mgmt->editor, else->data."""
-        intent = state.get("intent")
+        """Route based on intent — skills first, then standard routing."""
+        intent = state.get("intent") or ""
+        if intent.startswith("skill:"):
+            return "skill_executor"
         if intent == "knowledge_query":
             return "rag_strategist"
         if intent == "data_management":
@@ -595,6 +681,7 @@ def build_graph():
         return "human_approval"
 
     graph.add_conditional_edges("intent_router", route_after_intent, {
+        "skill_executor": "skill_executor",
         "data_analyst": "data_analyst",
         "data_editor": "data_editor",
         "rag_strategist": "rag_strategist",
@@ -614,6 +701,7 @@ def build_graph():
         "report_generator": "report_generator",
     })
     # Phase 1 stops here — caller persists state and yields approval_required event
+    graph.add_edge("skill_executor", END)
     graph.add_edge("human_approval", END)
     graph.add_edge("data_editor", END)
     graph.add_edge("general_chat", END)
@@ -700,8 +788,13 @@ def _sse(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+@track_performance
 async def run_agent_stream(query: str, store_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
     """Yield SSE events as the graph executes each node — true streaming via async queue."""
+
+    # RAG hit-rate tracking
+    _rag_queries = 0
+    _rag_hits = 0
 
     trace_id = str(uuid.uuid4())
     _create_trace(trace_id, query, store_id)
@@ -784,14 +877,18 @@ async def run_agent_stream(query: str, store_id: int | None = None, start_date: 
             elif node_name == "fetch_context":
                 event = {"type": "tool_result", "title": "\u5916\u90e8\u73af\u5883", "content": node_output.get("external_context", "")}
             elif node_name == "rag_strategist":
-                # Single combined event instead of two separate yields
+                # Track RAG hit rate
+                _rag_queries += 1
+                refs = node_output.get("rag_references", [])
+                if refs and len(refs) > 0:
+                    _rag_hits += 1
                 event = {
                     "type": "rag_reference",
                     "title": "SOP \u5f15\u7528 & \u7b56\u7565\u89c4\u5212",
                     "content": node_output.get("strategy", ""),
                     "strategy": node_output.get("strategy", ""),
                     "retrieved_docs": node_output.get("retrieved_docs", ""),
-                    "references": node_output.get("rag_references", []),
+                    "references": refs,
                 }
             elif node_name == "risk_controller":
                 event = {"type": "thinking", "title": "\u98ce\u9669\u8bc4\u4f30", "content": json.dumps(node_output.get("risk_assessment", {}), ensure_ascii=False)}
@@ -831,6 +928,8 @@ async def run_agent_stream(query: str, store_id: int | None = None, start_date: 
 
         final_answer = final_state.get("final_report") or final_state.get("copy") or final_state.get("strategy") or ""
         _finish_trace(trace_id, trace_steps, final_answer)
+        rag_hit_rate = (_rag_hits / _rag_queries) if _rag_queries > 0 else None
+        set_perf_context(rag_hit_rate=rag_hit_rate, extra_metrics={"trace_steps": len(trace_steps), "hit_approval": hit_approval_gate})
         yield _sse({"type": "end", "trace_id": trace_id, "node": "end", "done": True, "content": ""})
     except Exception as exc:
         _finish_trace(trace_id, trace_steps, str(exc), status="failed")

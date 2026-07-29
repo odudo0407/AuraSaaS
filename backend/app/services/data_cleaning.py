@@ -1,4 +1,10 @@
-"""Reusable data-cleaning pipeline for CSV/Excel imports."""
+"""Agent Data Ingestion Layer — normalizes user-uploaded CSV/Excel
+so downstream Agent tools operate on clean, validated data.
+
+Handles header alias resolution, money/percent/date normalization,
+required-field validation, range checking, store_id verification,
+consistency checks, and composite-key deduplication.
+"""
 
 from __future__ import annotations
 

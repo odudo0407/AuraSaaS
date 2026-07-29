@@ -1,5 +1,5 @@
 <template>
-  <aside class="hidden w-280px shrink-0 border-r border-hairline bg-white p-4 lg:flex lg:flex-col">
+  <aside class="hidden w-280px shrink-0 border-r border-hairline bg-[#faf9f5] p-4 lg:flex lg:flex-col">
     <button @click="$emit('newChat')" class="mb-4 h-10 rounded-lg bg-ink text-sm font-bold text-white transition hover:bg-body">
       {{ copy.newAnalysis }}
     </button>

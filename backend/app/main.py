@@ -88,6 +88,7 @@ from app.api.import_data import router as import_router
 from app.api.rag import router as rag_router
 from app.api.sku import router as sku_router
 from app.api.staff import router as staff_router
+from app.api.skills import router as skills_router
 from app.api.system import router as system_router
 from app.api.tasks import router as tasks_router
 from app.api.tenant_knowledge import router as tenant_knowledge_router
@@ -97,6 +98,7 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(dashboard_router)
 app.include_router(agent_router)
+app.include_router(skills_router)
 app.include_router(rag_router)
 app.include_router(admin_router)
 app.include_router(import_router)
@@ -109,12 +111,36 @@ app.include_router(agent_import_router)
 app.include_router(system_router)
 
 
+def _discover_skills():
+    """Auto-discover and register Skill modules from app.skills package."""
+    import importlib
+    import pkgutil
+    import app.skills as skills_pkg
+
+    for _, name, _ in pkgutil.iter_modules(skills_pkg.__path__, skills_pkg.__name__ + "."):
+        try:
+            importlib.import_module(name)
+        except Exception:
+            logger.exception("Failed to load skill module: %s", name)
+
+
 @app.on_event("startup")
 def on_startup():
-    """Initialize schema compatibility and seed demo data only when needed."""
+    """Initialize schema compatibility, auto-discover Skills, seed demo data."""
 
     from app.database import ensure_demo_schema
     from scripts.generate_mock_data import init_mock_data
+
+    # ── Auto-discover Skill modules ─────────────────────────
+    _discover_skills()
+
+    # ── Initialize MCP servers ──────────────────────────────
+    try:
+        from app.mcp.adapter import init_mcp_servers
+        mcp_config = {"servers": settings.mcp_servers} if hasattr(settings, "mcp_servers") and settings.mcp_servers else None
+        init_mcp_servers(mcp_config)
+    except Exception:
+        logger.exception("MCP initialization failed")
 
     ensure_demo_schema()
 

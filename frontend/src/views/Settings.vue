@@ -66,17 +66,14 @@
             <label class="text-sm text-muted block mb-1.5">模型选择</label>
             <select v-model="model"
               class="w-full bg-surface-soft border border-hairline rounded-lg px-4 py-2.5 text-sm text-ink outline-none focus:border-ink transition-colors">
-              <option value="deepseek-chat">DeepSeek-V3 — 性价比高，适合日常对话与数据分析</option>
-              <option value="deepseek-reasoner">DeepSeek-R1 — 推理增强，适合复杂诊断与策略规划</option>
-              <option value="deepseek-v4">DeepSeek-V4 — 最新旗舰，综合能力强</option>
-              <option value="deepseek-v4-pro">DeepSeek-V4 Pro — 顶级性能，适合高精度任务</option>
+              <option value="deepseek-v4-pro">DeepSeek-V4 Pro — 顶级性能，适合复杂分析（推荐）</option>
+              <option value="deepseek-v4-flash">DeepSeek-V4 Flash — 响应快速、成本低，适合日常对话</option>
+              <option value="deepseek-reasoner">DeepSeek-R1 — 推理增强，适合深度诊断与策略规划</option>
             </select>
             <p class="text-xs text-muted-soft mt-2 leading-relaxed">
-              💡 <span class="font-medium text-ink">指引：</span>
-              <span v-if="model === 'deepseek-chat'">V3 响应快速、成本低，推荐用于常规分析和文案生成。</span>
-              <span v-else-if="model === 'deepseek-reasoner'">R1 会展示详细推理过程（&lt;think&gt;），适合深度诊断和策略制定，但响应较慢。</span>
-              <span v-else-if="model === 'deepseek-v4'">V4 综合性能更强，推理与生成兼顾。</span>
-              <span v-else>V4 Pro 是当下最强模型，适合对精度要求极高的场景。</span>
+              <span v-if="model === 'deepseek-v4-pro'">V4 Pro 综合能力最强，推荐用于复杂分析、策略生成和高精度任务。</span>
+              <span v-else-if="model === 'deepseek-reasoner'">R1 会展示详细推理过程，适合深度诊断和策略制定，但响应较慢。</span>
+              <span v-else>V4 Flash 响应快速、成本更低，推荐用于日常对话和数据查询。</span>
             </p>
           </div>
           <button @click="saveConfig"
@@ -400,7 +397,7 @@ const profile = useUserProfileStore()
 const showKey = ref(false)
 const apiKey = ref(localStorage.getItem('aura_apiKey') || '')
 const baseUrl = ref(localStorage.getItem('aura_baseUrl') || 'https://api.deepseek.com')
-const model = ref(profile.selectedModel || 'deepseek-chat')
+const model = ref(profile.selectedModel || 'deepseek-v4-pro')
 
 const showDeleteConfirm = ref(false)
 const showResetConfirm = ref(false)

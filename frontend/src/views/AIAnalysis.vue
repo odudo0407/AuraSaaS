@@ -14,25 +14,6 @@
     />
 
     <main class="flex min-w-0 flex-1 flex-col">
-      <section class="border-b border-hairline bg-white px-6 py-4">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p class="text-sm font-bold text-primary">{{ copy.kicker }}</p>
-            <h1 class="mt-1 text-2xl font-bold text-ink">{{ copy.title }}</h1>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="prompt in quickPrompts"
-              :key="prompt"
-              @click="sendMessage(prompt)"
-              class="rounded-lg border border-hairline bg-[#fbfaf8] px-3 py-2 text-xs font-bold text-ink transition hover:border-ink"
-            >
-              {{ prompt }}
-            </button>
-          </div>
-        </div>
-      </section>
-
       <section ref="chatArea" class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <div v-if="messages.length === 0" class="mx-auto max-w-920px py-10">
           <div class="rounded-lg border border-hairline bg-white p-6">
@@ -63,25 +44,50 @@
             </div>
 
             <div v-else class="rounded-lg border border-hairline bg-white p-4">
-              <div class="mb-4 flex items-center justify-between gap-3">
+              <div class="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div class="text-sm font-bold text-ink">{{ copy.agentRun }}</div>
                   <div class="text-xs text-muted">{{ message.traceId || copy.localStream }}</div>
                 </div>
-                <span class="rounded-full bg-[#f5f4f0] px-3 py-1 text-xs font-bold text-muted">{{ messageStatus(message.status) }}</span>
+                <span
+                  v-if="message.status === 'error'"
+                  class="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-600"
+                >失败</span>
+                <span v-else class="rounded-full bg-[#f5f4f0] px-3 py-1 text-xs font-bold text-muted">{{ messageStatus(message.status) }}</span>
               </div>
 
-              <div v-if="message.sections.length === 0" class="text-sm text-muted">{{ copy.waiting }}</div>
+              <div v-if="message.sections.length === 0 && message.status !== 'error'" class="text-sm text-muted">{{ copy.waiting }}</div>
 
-              <div
-                v-for="section in message.sections"
-                :key="section.id"
-                class="mb-3 rounded-lg border border-hairline bg-[#fbfaf8] p-4 last:mb-0"
-              >
-                <div class="mb-2 flex items-center justify-between gap-3">
-                  <div class="text-sm font-bold text-ink">{{ section.title }}</div>
-                  <span class="rounded-full bg-white px-2 py-1 text-xs font-bold text-muted">{{ section.node }}</span>
+              <!-- Error display -->
+              <div v-if="message.status === 'error' && message.errorContent" class="text-sm text-red-600 mb-3">{{ message.errorContent }}</div>
+
+              <!-- Thinking steps (collapsible) -->
+              <div v-if="thinkingSteps(message).length > 0" class="mb-3">
+                <button
+                  @click="message._showSteps = !message._showSteps"
+                  class="flex items-center gap-2 text-xs font-bold text-muted hover:text-ink transition"
+                >
+                  <span class="inline-block transition-transform" :class="{ 'rotate-90': message._showSteps }">▸</span>
+                  <span v-if="message.status === 'running'">{{ copy.thinking }}</span>
+                  <span v-else>{{ copy.thinkingDone.replace('{n}', thinkingSteps(message).length) }}</span>
+                </button>
+                <div v-if="message._showSteps" class="mt-2 grid gap-2">
+                  <div
+                    v-for="section in thinkingSteps(message)"
+                    :key="section.id"
+                    class="rounded-lg border border-hairline bg-[#fbfaf8] p-3"
+                  >
+                    <div class="mb-1 flex items-center justify-between gap-3">
+                      <div class="text-xs font-bold text-ink">{{ section.title }}</div>
+                      <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-muted-soft">{{ section.node }}</span>
+                    </div>
+                    <div v-if="section.content" class="markdown-body text-xs leading-5 text-body" v-html="renderMarkdown(section.content)"></div>
+                  </div>
                 </div>
+              </div>
+
+              <!-- Final answer (always visible) -->
+              <div v-for="section in finalSections(message)" :key="section.id">
                 <AgentFormCard
                   v-if="section.form"
                   :form="section.form"
@@ -97,7 +103,7 @@
                     <div v-if="ref.snippet" class="mt-2 text-xs leading-5 text-body">{{ ref.snippet }}</div>
                   </div>
                 </div>
-                <div v-if="section.type === 'final_answer'" class="mt-3 flex flex-wrap gap-2">
+                <div v-if="section.type === 'final_answer' || section.type === 'error'" class="mt-3 flex flex-wrap gap-2">
                   <button @click="copyText(section.content)" class="h-8 rounded-lg border border-hairline bg-white px-3 text-xs font-bold text-ink">
                     {{ copy.copyReport }}
                   </button>
@@ -165,52 +171,48 @@
         </div>
       </section>
 
-      <section class="border-t border-hairline bg-white px-6 py-5">
+      <section class="border-t border-hairline bg-white px-6 py-3">
         <div class="mx-auto max-w-980px">
-          <div class="mb-4 flex items-end justify-between">
-            <!-- Left: Wave animation + cycling text (only when streaming) -->
-            <div v-if="streaming" class="flex items-center gap-3">
-              <div class="water-flow">
-                <span class="water-drop d1"></span>
-                <span class="water-drop d2"></span>
-                <span class="water-drop d3"></span>
-                <span class="water-drop d4"></span>
-                <span class="water-drop d5"></span>
-                <span class="water-ripple"></span>
-              </div>
-              <span class="text-sm font-bold text-primary thinking-label">{{ thinkingText }}</span>
+          <!-- Skills selector -->
+          <div v-if="skills.length" class="flex flex-wrap items-center gap-2 mb-3">
+            <span class="text-xs font-bold text-muted shrink-0">Skill:</span>
+            <button
+              v-for="skill in skills"
+              :key="skill.name"
+              @click="activeSkillId = activeSkillId === skill.name ? null : skill.name"
+              :class="[
+                'rounded-lg border px-3 py-1.5 text-xs font-bold transition',
+                activeSkillId === skill.name
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-hairline bg-[#fbfaf8] text-ink hover:border-ink'
+              ]"
+              :title="skill.description"
+            >
+              {{ skill.name === 'review_reply' ? '差评回复' : skill.name === 'store_health' ? '健康度诊断' : skill.name }}
+            </button>
+          </div>
+          <!-- Quick prompts above input -->
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button
+              v-for="prompt in quickPrompts"
+              :key="prompt"
+              @click="sendMessage(prompt)"
+              class="rounded-lg border border-hairline bg-[#fbfaf8] px-3 py-2 text-xs font-bold text-ink transition hover:border-ink"
+            >
+              {{ prompt }}
+            </button>
+          </div>
+          <!-- Streaming indicator -->
+          <div v-if="streaming" class="flex items-center gap-3 mb-3">
+            <div class="water-flow">
+              <span class="water-drop d1"></span>
+              <span class="water-drop d2"></span>
+              <span class="water-drop d3"></span>
+              <span class="water-drop d4"></span>
+              <span class="water-drop d5"></span>
+              <span class="water-ripple"></span>
             </div>
-            <div v-else></div>
-            <!-- Right: Office SVG -->
-            <div class="text-right" :class="{ 'opacity-40': streaming }">
-              <svg class="inline-block h-auto w-200px" viewBox="0 0 400 140" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0" y="0" width="400" height="140" rx="12" fill="#faf9f6"/>
-                <rect x="0" y="0" width="400" height="90" rx="12" fill="#f0ede8"/>
-                <rect x="15" y="55" width="2" height="50" rx="1" fill="#ddddd8"/>
-                <rect x="140" y="55" width="2" height="50" rx="1" fill="#ddddd8"/>
-                <rect x="265" y="55" width="2" height="50" rx="1" fill="#ddddd8"/>
-                <rect x="25" y="70" width="105" height="6" rx="3" fill="#e8e5df"/>
-                <rect x="55" y="55" width="45" height="15" rx="2" fill="#2d2d2d"/>
-                <rect x="57" y="57" width="41" height="11" rx="1" fill="#1a3a5c"/>
-                <rect x="61" y="59" width="12" height="7" rx="1" fill="#37d67a" opacity="0.7"/>
-                <rect x="75" y="70" width="6" height="6" rx="1" fill="#bbb7b0"/>
-                <rect x="150" y="70" width="105" height="6" rx="3" fill="#e8e5df"/>
-                <rect x="180" y="55" width="45" height="15" rx="2" fill="#2d2d2d"/>
-                <rect x="182" y="57" width="41" height="11" rx="1" fill="#1a3a5c"/>
-                <rect x="186" y="59" width="12" height="7" rx="1" fill="#ff9f43" opacity="0.7"/>
-                <rect x="200" y="70" width="6" height="6" rx="1" fill="#bbb7b0"/>
-                <rect x="275" y="70" width="105" height="6" rx="3" fill="#e8e5df"/>
-                <rect x="305" y="55" width="45" height="15" rx="2" fill="#2d2d2d"/>
-                <rect x="307" y="57" width="41" height="11" rx="1" fill="#1a3a5c"/>
-                <rect x="311" y="59" width="12" height="7" rx="1" fill="#ff385c" opacity="0.7"/>
-                <rect x="325" y="70" width="6" height="6" rx="1" fill="#bbb7b0"/>
-                <circle cx="38" cy="69" r="5" fill="#6b8e5a"/>
-                <circle cx="38" cy="67" r="4" fill="#7da864"/>
-                <rect x="365" y="64" width="8" height="7" rx="2" fill="#c4b5a5"/>
-                <ellipse cx="370" cy="64" rx="4" ry="1.5" fill="#8b6f5e"/>
-              </svg>
-              <p class="mt-2 text-xs font-bold uppercase tracking-wider text-muted">{{ copy.agentTagline }}</p>
-            </div>
+            <span class="text-sm font-bold text-primary thinking-label">{{ thinkingText }}</span>
           </div>
           <div class="flex items-start gap-3">
             <textarea
@@ -220,13 +222,13 @@
               @input="autoResize"
               :placeholder="copy.inputPlaceholder"
               :disabled="streaming"
-              class="min-h-56px flex-1 resize-none rounded-xl border border-hairline bg-[#fbfaf8] px-5 py-4 text-sm leading-6 text-body placeholder:text-muted-soft focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink/10"
+              class="min-h-44px flex-1 resize-none rounded-xl border border-hairline bg-[#fbfaf8] px-5 py-2 text-sm leading-6 text-body placeholder:text-muted-soft focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink/10"
               rows="1"
             ></textarea>
             <button
               @click="sendMessage(input)"
               :disabled="streaming || !input.trim()"
-              class="h-14 shrink-0 rounded-xl bg-primary px-6 text-sm font-bold text-white transition hover:bg-primary-active disabled:opacity-40"
+              class="h-10 shrink-0 rounded-xl bg-primary px-6 text-sm font-bold text-white transition hover:bg-primary-active disabled:opacity-40"
             >
               {{ copy.send }}
             </button>
@@ -251,6 +253,7 @@ const {
   thinkingPhrase,
   storeList, selectedStoreId, selectedStoreName,
   input, inputRef, chatArea,
+  skills, activeSkillId, fetchSkills,
   startNewChat, sendMessage, loadChat, selectStore, approveProposal,
   deleteChat, clearAllHistory,
   agentLabel, statusLabel, statusClass, messageStatus,
@@ -280,13 +283,14 @@ const translations = {
     campaignDraftCreated: '已生成活动草稿，请查看营销模块。',
     viewCampaignDraft: '查看活动草稿',
     copyReport: '复制报告', downloadReport: '下载 Markdown',
+    thinking: '正在思考...', thinkingDone: '思考过程（{n}步）',
     quickPrompts: ['近 7 天营收趋势', '哪些 SKU 退款最高', '给我一份营销方案', '查看最新存量预警'],
     capabilities: [
       { kicker: 'diagnose', title: '营收异常诊断', desc: '跨门店对比数据找出营收下滑、退款异常、毛利恶化等信号。', prompt: '分析近三天营收下降原因' },
       { kicker: 'plan', title: 'RAG 策略规划', desc: '基于 SOP 知识库生成可执行营销方案。', prompt: '用我们的 SOP 为最弱门店设计低预算活动' },
       { kicker: 'approve', title: '人工审批控制', desc: '高风险策略需要管理者审批才能执行。', prompt: '生成一份需要店长审批的营销方案' },
     ],
-    pipeline: { intent_router: 'Intent', data_analyst: 'Data', fetch_context: 'Context', rag_strategist: 'RAG', risk_controller: 'Risk', human_approval: 'Approval', copywriter: 'Copy', data_editor: 'Data Edit', general_chat: 'Answer', report_generator: 'Report' },
+    pipeline: { skill_executor: 'Skill', intent_router: 'Intent', data_analyst: 'Data', fetch_context: 'Context', rag_strategist: 'RAG', risk_controller: 'Risk', human_approval: 'Approval', copywriter: 'Copy', data_editor: 'Data Edit', general_chat: 'Answer', report_generator: 'Report' },
     statuses: { pending: '等待', running: '执行中', complete: '完成', failed: '失败' },
   },
   en: {
@@ -309,13 +313,14 @@ const translations = {
     campaignDraftCreated: 'Campaign draft created. View in Marketing module.',
     viewCampaignDraft: 'View campaign draft',
     copyReport: 'Copy report', downloadReport: 'Download Markdown',
+    thinking: 'Thinking...', thinkingDone: 'Thinking process ({n} steps)',
     quickPrompts: ['Revenue trend (7d)', 'Top refund SKUs', 'Marketing plan', 'Inventory alerts'],
     capabilities: [
       { kicker: 'diagnose', title: 'Revenue anomaly diagnosis', desc: 'Cross-store comparison to find revenue drops, refund anomalies, margin deterioration.', prompt: 'Analyze why revenue dropped in the last three days' },
       { kicker: 'plan', title: 'RAG strategy planning', desc: 'Generate actionable marketing plans grounded in SOP knowledge.', prompt: 'Use our SOPs to design a low-budget campaign for the weakest store' },
       { kicker: 'approve', title: 'HITL approval control', desc: 'High-risk strategies require manager approval before execution.', prompt: 'Draft a marketing action requiring store manager approval' },
     ],
-    pipeline: { intent_router: 'Intent', data_analyst: 'Data', fetch_context: 'Context', rag_strategist: 'RAG', risk_controller: 'Risk', human_approval: 'Approval', copywriter: 'Copy', data_editor: 'Data Edit', general_chat: 'Answer', report_generator: 'Report' },
+    pipeline: { skill_executor: 'Skill', intent_router: 'Intent', data_analyst: 'Data', fetch_context: 'Context', rag_strategist: 'RAG', risk_controller: 'Risk', human_approval: 'Approval', copywriter: 'Copy', data_editor: 'Data Edit', general_chat: 'Answer', report_generator: 'Report' },
     statuses: { pending: 'Waiting', running: 'Running', complete: 'Done', failed: 'Failed' },
   },
 }
@@ -327,6 +332,13 @@ const thinkingText = computed(() => {
   if (!streaming.value) return ''
   return thinkingPhrase.value
 })
+
+function thinkingSteps(msg) {
+  return (msg.sections || []).filter(s => s.type !== 'final_answer' && s.type !== 'error')
+}
+function finalSections(msg) {
+  return (msg.sections || []).filter(s => s.type === 'final_answer' || s.type === 'error')
+}
 
 function copyText(text) {
   navigator.clipboard?.writeText(text)
@@ -357,6 +369,8 @@ function handleFormSubmitted(message, section, result) {
   })
   scrollToBottom()
 }
+
+onMounted(() => { fetchSkills() })
 </script>
 
 <style scoped>

@@ -2,17 +2,36 @@
 
 The service prefers ChromaDB when available and keeps a simple keyword fallback so the
 open-source demo still works without embeddings or network access.
+
+Query results are cached via Redis (with in-memory fallback) with a 5-min TTL
+to reduce redundant vector searches.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
+from app.core.redis_client import redis_client
 from pathlib import Path
 from typing import Iterable
 from app.core.config import get_settings
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 KNOWLEDGE_DIR = ROOT_DIR / "docs" / "knowledge"
+
+_COLLECTION_NAME = "aurasaas_knowledge_v2"
+
+
+def _get_ef():
+    try:
+        import os
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+        from chromadb.utils import embedding_functions
+        return embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="BAAI/bge-small-zh-v1.5",
+        )
+    except Exception:
+        return None
 
 
 def _read_markdown_files() -> list[dict]:
@@ -70,7 +89,9 @@ def ingest_documents() -> dict:
         import chromadb
 
         client = chromadb.PersistentClient(path=settings.chroma_dir)
-        collection = client.get_or_create_collection("aurasaas_knowledge")
+        collection = client.get_or_create_collection(
+            _COLLECTION_NAME, embedding_function=_get_ef()
+        )
         if ids:
             existing = collection.get(ids=ids)
             existing_ids = set(existing.get("ids", []))
@@ -112,23 +133,43 @@ def _keyword_query(query: str, top_k: int) -> list[dict]:
     ]
 
 
-def query_knowledge(query: str, top_k: int = 4) -> list[dict]:
-    """Query public SOP knowledge and return title/snippet/score/source records."""
+def query_knowledge(query: str, top_k: int = 4, collection: str = None) -> list[dict]:
+    """Query public SOP knowledge and return title/snippet/score/source records.
+
+    Results are cached with a 5-min TTL to reduce redundant ChromaDB queries.
+    Supports skill-specific collections via the ``collection`` parameter.
+    """
+
+    if collection is None:
+        collection = _COLLECTION_NAME
+
+    cache_key = f"rag:{collection}:{hashlib.md5(f'{query}|{top_k}'.encode()).hexdigest()}"
+    cached = redis_client.get_json(cache_key)
+    if cached is not None:
+        return cached
 
     settings = get_settings()
     try:
         import chromadb
 
         client = chromadb.PersistentClient(path=settings.chroma_dir)
-        collection = client.get_or_create_collection("aurasaas_knowledge")
-        if collection.count() == 0:
-            ingest_documents()
-        result = collection.query(query_texts=[query], n_results=top_k)
+        coll = client.get_or_create_collection(
+            collection, embedding_function=_get_ef()
+        )
+        if coll.count() == 0:
+            if collection in ("aurasaas_knowledge", _COLLECTION_NAME):
+                ingest_documents()
+            else:
+                # Skill collection is empty — fall back to keyword search
+                results = _keyword_query(query, top_k)
+                redis_client.set_json(cache_key, results, ttl=300)
+                return results
+        result = coll.query(query_texts=[query], n_results=top_k)
         docs = result.get("documents", [[]])[0]
         metas = result.get("metadatas", [[]])[0]
         distances = result.get("distances", [[]])[0]
         if docs:
-            return [
+            results = [
                 {
                     "title": meta.get("title", "Untitled"),
                     "snippet": doc[:500],
@@ -141,6 +182,10 @@ def query_knowledge(query: str, top_k: int = 4) -> list[dict]:
                 }
                 for doc, meta, distance in zip(docs, metas, distances)
             ]
+            redis_client.set_json(cache_key, results, ttl=300)
+            return results
     except Exception:
         pass
-    return _keyword_query(query, top_k)
+    results = _keyword_query(query, top_k)
+    redis_client.set_json(cache_key, results, ttl=300)
+    return results

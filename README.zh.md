@@ -277,3 +277,5 @@ MIT License。详见 [LICENSE](LICENSE)。
 ![营销页面](assets/readme/08-marketing.png)
 
 ![财务页面](assets/readme/09-finance.png)
+
+![个人页面](assets/readme/10.png)

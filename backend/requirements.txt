@@ -28,3 +28,6 @@ python-multipart==0.0.30
 pytest==8.3.3
 alembic==1.14.0
 markdown==3.7
+psycopg2-binary==2.9.9
+redis==5.0.8
+fakeredis==2.21.3

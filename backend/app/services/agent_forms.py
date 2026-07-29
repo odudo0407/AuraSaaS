@@ -13,9 +13,10 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.models import AgentTrace, SkuPerformance, Staff, Store
+from app.core.redis_client import redis_client
 
 
-FORM_CACHE: dict[str, dict[str, Any]] = {}
+FORM_CACHE_TTL = 1800  # 30 minutes — form previews expire after this
 BULK_PRODUCT_TARGET = "__ALL_PRODUCTS__"
 BASE_DIR = Path(__file__).resolve().parents[2]  # backend/
 PRODUCT_ENTITY_TOKENS = ["商品", "物品", "sku", "菜品", "产品"]
@@ -100,7 +101,7 @@ def preview_agent_form(query: str, store_id: int | None = None, history: list[di
         "source_query": query,
         "history": history or [],
     }
-    FORM_CACHE[form_id] = preview
+    redis_client.set_json(f"form:{form_id}", preview, ttl=FORM_CACHE_TTL)
     return preview
 
 
@@ -126,7 +127,7 @@ def is_form_intent(query: str) -> bool:
 
 
 def submit_agent_form(db: Session, form_id: str, rows: list[dict], confirm: bool = False, user_id: int | None = None) -> dict:
-    preview = FORM_CACHE.get(form_id)
+    preview = redis_client.get_json(f"form:{form_id}")
     if not preview:
         return {"code": -1, "data": None, "message": "表格已过期，请重新生成。"}
 

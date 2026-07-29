@@ -371,17 +371,21 @@ async def agent_import_data(
 ):
     """Stream smart import progress: header detection, mapping, cleaning, import."""
 
+    # Read file eagerly — avoids "I/O operation on closed file" in test client
+    raw_bytes = await file.read()
+    raw_name = file.filename or ""
+
     async def event_stream():
         yield _sse({
             "type": "phase",
             "phase": "header_detect",
-            "title": "识别表头",
-            "content": f"正在读取文件: {file.filename}",
+            "title": "Agent 正在理解你的数据格式",
+            "content": f"正在读取文件: {raw_name}",
             "done": False,
         })
 
         try:
-            headers, rows, file_type = _read_file_content(await file.read(), file.filename or "")
+            headers, rows, file_type = _read_file_content(raw_bytes, raw_name)
         except Exception as exc:
             yield _sse({"type": "error", "content": str(exc), "done": True})
             return
@@ -393,7 +397,7 @@ async def agent_import_data(
         yield _sse({
             "type": "progress",
             "phase": "header_detect",
-            "title": "识别表头",
+            "title": "Agent 已识别数据结构",
             "content": f"检测到 {len(headers)} 列，{len(rows)} 行",
             "headers": headers,
             "row_count": len(rows),

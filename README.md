@@ -1,145 +1,167 @@
 # AuraSaaS
 
-[中文版](README.zh.md)
+面向连锁门店经营分析的 AI Agent 平台。基于 LangGraph 工作流与 ReAct Agent 双模式智能体引擎，融合 RAG 知识检索、Skill 插件体系、MCP 协议接入和 HITL 人工审批，实现从数据查询到策略生成的完整闭环。
 
-Open-source AI-powered Business Intelligence Agent platform for multi-store operations.
+[English](#english)
 
-AuraSaaS integrates LangGraph agent orchestration, RAG knowledge retrieval, a 5-tier tool-calling system, human-in-the-loop (HITL) approval, and full execution traceability — all exposed through a Vue 3 dashboard and FastAPI backend.
+---
 
-![AuraSaaS Dashboard](assets/readme/01-dashboard-overview.png)
+## 架构总览
 
-## Features
-
-### Agent Workflow
-
-- **Dual-mode execution** — a unified `/api/agent/stream` endpoint classifies user queries into **11 intent types** via LLM + keyword fallback, then auto-routes to either a LangGraph pipeline (for high-risk operations with HITL) or a ReAct agent (for fast autonomous tool-calling).
-- **10-node LangGraph pipeline** — `intent_router → data_analyst → fetch_context → rag_strategist → risk_controller → human_approval` (Phase 1), followed by `copywriter → report_generator` (Phase 2, post-approval). Conditional edges skip irrelevant nodes based on intent.
-- **ReAct agent loop** — think-act-observe pattern with up to 12 iterations, autonomous tool selection, and multi-turn conversation history.
-
-![Agent Pipeline](assets/readme/02-agent-pipeline.png)
-
-### RAG Knowledge Retrieval
-
-- **Three-tier architecture**: public SOP documents (8 built-in markdown files), tenant-private uploads (PDF/DOCX/TXT/MD), and codebase indexing (tree-sitter AST chunking for Python, JavaScript, Java).
-- **Dual-channel search**: ChromaDB vector similarity + keyword-based fallback, ensuring retrieval works even without embeddings or network access.
-- **Automatic chunking**: 900-character windows with 120-character overlap for public documents; configurable for tenant documents.
-
-### Tool Calling System
-
-- **22 tools** across **5 privilege tiers**:
-
-| Tier | Level | Scope | Example Tools |
-|------|-------|-------|---------------|
-| Read-only | 1 | Query existing data | `get_daily_summary`, `list_all_stores`, `get_store_detail` |
-| Analysis | 2 | Detect & forecast | `detect_anomalies`, `forecast_metric`, `compare_periods`, `rank_stores` |
-| Retrieval | 3 | Search knowledge | `search_knowledge_base`, `search_agent_memory` |
-| Generation | 4 | Create content (gated) | `generate_marketing_strategy`, `generate_campaign_copy`, `evaluate_strategy_risk` |
-| Write | 5 | Mutate data (gated) | `add_product`, `create_anomaly_tasks`, `save_agent_memory` |
-
-- **Privilege enforcement**: the ReAct agent defaults to tier 3; tiers 4–5 require escalation through the LangGraph HITL path. Execution attempts above the current ceiling raise `PrivilegeEscalationError`.
-
-### Human-in-the-Loop Approval
-
-- **Pause–persist–resume**: when the agent generates a high-risk proposal, the LangGraph pipeline pauses at the `human_approval` node, serializes its full state into the database, and yields an `approval_required` SSE event.
-- **Three decision types**: approve, reject, or request revision. Approval automatically creates a `MarketingCampaign` draft and resumes Phase 2 (copywriting → final report) via a dedicated SSE endpoint.
-- **Memory persistence**: approval decisions and analysis conclusions are written to `AgentMemory` for future reasoning context.
-
-### Execution Traceability
-
-- Every agent run produces a structured `AgentTrace` record containing node-level events, tool call arguments, per-node duration, and the final answer.
-- **SSE streaming**: the frontend receives real-time node-status events and renders them in a pipeline timeline (`AgentPipeline` component).
-- **Trace replay**: saved traces are replayable by `trace_id`, displaying the original step-by-step execution.
-- **Performance metrics**: token usage, cumulative cost (with budget guard), and RAG hit rate are logged per run.
-
-### BI Dashboard
-
-- KPI overview cards with period-over-period change indicators.
-- Revenue trend chart (ECharts) with configurable date ranges.
-- Top-SKU heatmap, store ranking table, anomaly alert list.
-- Management pages: Stores, Products (SKU), Staff, Marketing Campaigns, Finance, Reports.
-
-### Platform
-
-- **Auth**: JWT with access/refresh token rotation and automatic 401 interception.
-- **Rate limiting**: per-endpoint request throttling.
-- **Cost guard**: cumulative LLM token budget (`AGENT_BUDGET_YUAN`); requests are intercepted before exceeding the limit.
-- **Consistent API**: all responses follow `{code, data, message}` envelope; SSE uses typed event streams.
-
-![AI Analysis Page](assets/readme/03-ai-analysis-page.png)
-
-## Architecture
-
-```text
-User Query
-    │
-    ▼
-┌──────────────────────────────────────────┐
-│   POST /api/agent/stream  (auto-route)   │
-│                                          │
-│   Keyword intent classification          │
-│        │                      │          │
-│    high-risk                quick        │
-│        ▼                      ▼          │
-│   LangGraph Pipeline     ReAct Agent     │
-│   (10 nodes + HITL)    (think-act loop)  │
-└──────────────────────────────────────────┘
-
-LangGraph Phase 1:
-  intent_router → data_analyst → fetch_context
-    → rag_strategist → risk_controller → human_approval
-                                              │
-                                       ┌──────┴──────┐
-                                       │  PAUSE       │
-                                       │  save state  │
-                                       │  → AgentTrace│
-                                       └──────┬──────┘
-                                              │ User approves
-                                              ▼
-LangGraph Phase 2 (via /stream-resume):
-  copywriter → report_generator → END
+```
+┌──────────────────────────────────────────────────────────────┐
+│                       Vue 3 Frontend                         │
+│   Dashboard │ AI Analysis │ Products │ Staff │ Stores        │
+│   Marketing │ Finance │ Reports │ Settings (Skills + MCP)    │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ SSE / REST
+┌──────────────────────────▼───────────────────────────────────┐
+│                     FastAPI Backend                           │
+│  ┌────────────┐  ┌──────────┐  ┌──────────────────────────┐ │
+│  │ LangGraph   │  │  ReAct   │  │  Skill Executor          │ │
+│  │ 11 nodes    │  │ 12 iter  │  │  review_reply /          │ │
+│  │ + HITL      │  │ auto tool│  │  store_health            │ │
+│  └────────────┘  └──────────┘  └──────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  5-tier Tool Calling (28 tools) + MCP Adapter          │  │
+│  │  RAG (ChromaDB + Keyword) │ Trace & Replay                │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+┌──────────────────────────▼───────────────────────────────────┐
+│   PostgreSQL / SQLite │ ChromaDB │ Redis (optional)          │
+│   DeepSeek API        │ MCP Servers (Filesystem, SQLite)     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## Tech Stack
+## Agent 执行流程
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Vue 3, Vite 6, Pinia, Vue Router, ECharts, UnoCSS, Marked |
-| Backend | FastAPI (Python), LangGraph, SQLAlchemy 2, Pydantic v2, Alembic |
-| AI / LLM | DeepSeek API (OpenAI-compatible), with demo-mode fallback |
-| RAG | ChromaDB, sentence-transformers, tree-sitter (code parsing) |
-| Database | SQLite (local / demo), Alembic migrations |
-| Auth | JWT (python-jose + passlib), rate limiting |
-| DevOps | GitHub Actions CI |
+```mermaid
+graph TD
+    A[用户输入] --> B[intent_router]
+    B -->|Skill 命中| C[skill_executor]
+    B -->|通用查询| D{路由判断}
+    C --> E[END]
+    D -->|知识查询| F[rag_strategist]
+    D -->|数据管理| G[data_editor]
+    D -->|一般对话| H[general_chat]
+    D -->|其他| I[data_analyst]
+    I --> J[fetch_context]
+    J --> F
+    F --> K[risk_controller]
+    K -->|高风险| L[human_approval]
+    K -->|低风险| M[report_generator]
+    L --> M
+    M --> E
+    G --> E
+    H --> E
+```
 
-## Quick Start
+---
 
-### Prerequisites
+## 核心特性
+
+### 双模式 Agent 引擎
+
+- **智能路由** — 11 种经营意图分类，LLM 语义理解 + 关键词规则双重判断
+- **ReAct Agent** — 低风险查询自主执行，最大 12 轮工具调用迭代，默认权限等级 3
+- **LangGraph 工作流** — 11 节点 StateGraph 编排高风险操作，完整状态可序列化、可中断、可恢复
+- **HITL 人工审批** — 风险操作自动暂停，SSE 实时推送审批请求至前端，支持批准 / 拒绝 / 修编三种决策
+
+### Skill 插件体系
+
+统一 Skill Schema（意图触发、工具声明、知识源注册、输出模板），支持热注册与自动发现。每个 Skill 拥有独立的 ChromaDB collection 实现 RAG 隔离。
+
+内置示例 Skill：
+
+| Skill | 功能 |
+|---|---|
+| `review_reply` | 差评分析与回复生成 |
+| `store_health` | 门店多维度健康度诊断 |
+
+### MCP 协议接入
+
+自研轻量 MCP 客户端（JSON-RPC over stdio），支持 Filesystem 和 SQLite MCP Server。MCP Tool 自动适配为 Agent 工具，无需额外配置即可扩展 Agent 能力边界。
+
+### RAG 知识检索
+
+- **双通道召回** — ChromaDB 向量检索 + 关键词检索，Redis 缓存（TTL 5 分钟）
+- **三级知识源** — 公共 SOP（8 份内置文档）、租户私有文档（PDF / DOCX / TXT / MD）、代码库索引（tree-sitter AST）
+- **全降级可用** — ChromaDB 不可用时自动切换关键词检索，无 Redis 使用内存缓存
+
+### Tool Calling 权限体系
+
+21 个内置工具 + MCP 工具，按 5 个权限等级划分：
+
+| 等级 | 类别 | 说明 |
+|---|---|---|
+| 1 | 只读 | 数据查询、指标获取 |
+| 2 | 分析 | 趋势分析、异常检测 |
+| 3 | 检索 | RAG 知识检索、记忆搜索 |
+| 4 | 生成 | 报表生成、策略输出 |
+| 5 | 写入 | 数据变更、配置修改 |
+
+权限门控在工具执行前拦截越权调用，Write 操作自动升级为人工审批。
+
+### 全链路可观测性
+
+- 节点级执行追踪（状态、工具调用、耗时）
+- trace_id 全程回放
+- SSE 流式传输 + 前端工作流可视化
+- 成本追踪（按会话统计 LLM 调用费用）
+
+### 工程化
+
+- 令牌桶限流、数据库连接池、JWT 鉴权
+- 全组件支持降级：无 API Key / 无 Redis / 无 ChromaDB / 无 PostgreSQL 均可运行
+- SQLite 零配置启动，内置中文 Demo 回答
+
+---
+
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| Agent 框架 | LangGraph, ReAct, Function Calling |
+| RAG | ChromaDB, sentence-transformers, 关键词检索 |
+| LLM | DeepSeek API（兼容 OpenAI 格式） |
+| 后端 | Python 3.10+, FastAPI, SSE, SQLAlchemy 2.0 |
+| 数据库 | PostgreSQL（生产）/ SQLite（开发）, Redis（可选） |
+| MCP | 自研轻量 MCP Client（JSON-RPC over stdio） |
+| 前端 | Vue 3, Vite 5, Pinia, ECharts 5, UnoCSS |
+| 部署 | Docker, Docker Compose |
+
+---
+
+## 快速开始
+
+### 前置要求
 
 - Python 3.10+
 - Node.js 18+
-- (Optional) DeepSeek or OpenAI-compatible API key for live LLM features
+- （可选）Docker
 
-### 1. Clone and configure
+### 1. 克隆项目
 
 ```bash
-git clone https://github.com/Enndme-KK/AuraSaaS.git && cd AuraSaaS
-cp .env.example .env
+git clone https://github.com/Enndme-KK/AuraSaaS.git
+cd AuraSaaS
 ```
 
-Edit `.env` and set `DEEPSEEK_API_KEY` to your API key. Leave it as the placeholder for demo mode — the agent will serve template-based fallback responses.
-
-### 2. Backend
+### 2. 启动后端
 
 ```bash
 cd backend
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-python -m app.scripts.ingest_knowledge    # Index SOP documents into ChromaDB
-uvicorn app.main:app --reload --port 8000
+cp .env.example .env        # 编辑 .env，填入 DeepSeek API Key（可选）
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-The first startup automatically seeds demo data (4 stores, 90 days of metrics, SKUs, external factors) if the database is empty.
+后端启动后访问 http://localhost:8000/docs 查看 Swagger API 文档。
 
-### 3. Frontend
+### 3. 启动前端
 
 ```bash
 cd frontend
@@ -147,133 +169,146 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`, register an account, and start exploring.
+前端启动后访问 http://localhost:3000，注册账号即可使用。
 
-> After upgrading, delete `backend/aura.db` to ensure schema migrations apply cleanly.
+### 4. Docker 一键部署
 
-## Environment Variables
+```bash
+docker-compose up -d
+```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DEEPSEEK_API_KEY` | `your-deepseek-api-key` | LLM API key; placeholder enables demo mode |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | LLM API base URL |
-| `OPENAI_API_BASE` | `https://api.deepseek.com` | Alternative API base |
-| `DATABASE_URL` | `sqlite:///./aura.db` | SQLAlchemy database URL |
-| `CHROMA_DIR` | `./data/chroma` | ChromaDB persistence directory |
-| `CODE_EMBEDDING_CACHE_DIR` | `./data/huggingface` | HuggingFace model cache |
-| `JWT_SECRET` | `change-me-in-production` | JWT signing key |
-| `ENVIRONMENT` | `local` | `local`, `development`, `test`, or production |
-| `SEED_DEMO_ON_STARTUP` | `true` | Auto-seed demo data on first run |
-| `FORCE_RESEED_DEMO` | `false` | Force reseed even if data exists |
-| `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
-| `LLM_TIMEOUT_SECONDS` | `30` | LLM request timeout |
-| `LLM_MAX_RETRIES` | `2` | Max retry attempts for transient errors |
-| `AGENT_BUDGET_YUAN` | `0.02` | Per-session LLM cost ceiling |
+### Demo 模式
 
-## Project Structure
+不配置任何 API Key 也能完整运行：系统内置中文演示回答，SQLite 自动建表，ChromaDB 不可用时降级为关键词检索，数据库自动填充 Mock 数据。
 
-```text
+---
+
+## 项目结构
+
+```
 AuraSaaS/
 ├── backend/
 │   ├── app/
-│   │   ├── agents/              # LangGraph workflow, ReAct agent, tools
-│   │   │   ├── nodes/           # data_analysis node (BI signal collection)
-│   │   │   └── toolkit/         # 9 modules: bi, analytics, marketing, etc.
-│   │   ├── api/                 # 14 FastAPI routers
-│   │   ├── core/                # config, security, rate-limit, observability
-│   │   ├── models/              # 14 SQLAlchemy ORM models
-│   │   ├── schemas/             # Pydantic request/response schemas
-│   │   ├── services/            # RAG, LLM client, data cleaning, agent forms
-│   │   └── tests/               # pytest suites (tools, graph, privilege, API)
-│   ├── alembic/                 # Database migration scripts
-│   ├── data/chroma/             # ChromaDB vector store
+│   │   ├── agents/              # Agent 引擎
+│   │   │   ├── graph.py         # LangGraph 11 节点 StateGraph + HITL
+│   │   │   ├── react_agent.py   # ReAct 自主 Agent 循环
+│   │   │   ├── tool_schemas.py  # 5 级权限 + 工具元数据
+│   │   │   ├── tools.py         # 工具注册入口
+│   │   │   ├── toolkit/         # 工具实现（BI、营销、知识、记忆等）
+│   │   │   └── nodes/           # LangGraph 节点实现
+│   │   ├── skills/              # Skill 插件体系
+│   │   │   ├── schema.py        # SkillSchema 定义
+│   │   │   ├── registry.py      # SkillRegistry（线程安全单例）
+│   │   │   ├── review_reply.py  # 差评回复 Skill
+│   │   │   └── store_health.py  # 门店健康度诊断 Skill
+│   │   ├── mcp/                 # MCP 协议适配层
+│   │   │   ├── client.py        # 轻量 MCP Client + 降级模式
+│   │   │   └── adapter.py       # MCP Tool → Agent Tool 适配
+│   │   ├── api/                 # FastAPI 路由（14 个模块）
+│   │   ├── services/            # LLM 客户端、RAG、数据清洗、Agent 表单
+│   │   ├── models/              # SQLAlchemy ORM（11 个模型）
+│   │   ├── core/                # 配置、鉴权、限流、Redis、可观测性
+│   │   └── tests/               # 测试（105 tests, 7 modules）
+│   ├── docs/knowledge/          # SOP 知识文档（Markdown）
+│   ├── alembic/                 # 数据库迁移脚本
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── components/          # AgentPipeline, ThoughtStream, StatCard, etc.
-│   │   ├── composables/         # useAgentAnalysis (SSE streaming + state)
-│   │   ├── views/               # 12 pages (AIAnalysis, Dashboard, Stores, …)
-│   │   ├── stores/              # Pinia stores (auth, dashboard)
-│   │   └── utils/               # HTTP client, SSE parser, markdown renderer
+│   │   ├── views/               # 12 个页面（含 9 个认证页面 + 3 个公共页面）
+│   │   ├── components/          # 公共组件
+│   │   ├── composables/         # 组合式函数（Agent 分析、批量选择等）
+│   │   ├── stores/              # Pinia 状态管理
+│   │   └── utils/               # 请求封装、Markdown 渲染、国际化
 │   └── package.json
-├── docs/knowledge/              # 8 built-in SOP / strategy markdown files
-├── sample_imports/              # Sample CSV import data
+├── sample_imports/              # 数据导入 Excel 模板
 ├── docker-compose.yml
-└── .env.example
+└── README.md
 ```
 
-## API Reference — Agent Endpoints
+---
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/agent/stream` | Unified entry: auto-routes to LangGraph or ReAct based on intent |
-| `GET` | `/api/agent/stream-diagnose` | LangGraph SSE (direct invocation, bypasses auto-route) |
-| `POST` | `/api/agent/stream-react` | ReAct Agent SSE (direct invocation) |
-| `GET` | `/api/agent/stream-resume` | Resume Phase 2 after HITL approval |
-| `POST` | `/api/agent/approve` | Approve / reject / revise a HITL proposal |
-| `GET` | `/api/agent/approvals` | List pending and historical approval requests |
-| `GET` | `/api/agent/traces` | List recent agent traces |
-| `GET` | `/api/agent/traces/{trace_id}` | Trace detail with timeline steps |
-| `POST` | `/api/agent/replay/{trace_id}` | Replay a saved trace |
-| `DELETE` | `/api/agent/traces/{trace_id}` | Delete a single trace |
-| `DELETE` | `/api/agent/traces` | Clear all traces |
-| `POST` | `/api/agent/forms/preview` | Generate a fillable business-operation form |
-| `POST` | `/api/agent/forms/submit` | Validate and execute a submitted agent form |
-
-Additional routers: `/api/auth/*`, `/api/dashboard/*`, `/api/rag/*`, `/api/tenant-knowledge/*`, `/api/import/*`, `/api/sku/*`, `/api/staff/*`, `/api/finance/*`, `/api/system/*`, `/api/tasks/*`.
-
-## Testing
+## 测试
 
 ```bash
-# Backend — all suites
+# 后端
 cd backend
-pytest app/tests/ -v
+python -m pytest app/tests/ -v
 
-# Run specific suites
-pytest app/tests/test_tools.py -v       # 19 tests — tool execution at all privilege levels
-pytest app/tests/test_graph_nodes.py -v # 26 tests — graph, routing, RAG, SSE
-pytest app/tests/test_privilege.py -v   # 14 tests — 5-tier permission gating
-
-# Frontend
+# 前端
 cd frontend
-npm run build    # type-check + production build
-npm run lint
+npm run build           # 构建检查
+node scripts/lint.mjs         # 代码规范检查
 ```
 
-## FAQ
+---
 
-**Q: The agent shows "demo mode" — how do I enable live AI?**
+## English
 
-Set `DEEPSEEK_API_KEY` in `.env` to a valid DeepSeek or OpenAI-compatible API key. The platform works with any OpenAI-compatible endpoint.
+AuraSaaS is an AI Agent platform for multi-store chain business analytics. It combines a LangGraph workflow engine with a ReAct agent to deliver an end-to-end solution — from data querying and knowledge retrieval to strategy generation and human-in-the-loop approval.
 
-**Q: Why does the agent pause and ask for approval?**
+### Key Capabilities
 
-Queries routed to the LangGraph pipeline (marketing plans, anomaly diagnosis, reports, data management) include a risk assessment step. If the proposal exceeds the risk threshold, it pauses for human review. Quick data queries go through the ReAct agent and do not require approval.
+- **Dual-mode Agent routing** — LangGraph workflow (11 nodes + HITL) for high-risk operations, ReAct agent (max 12 iterations) for low-risk queries. Intent classification covers 11 business categories with LLM + keyword-based routing.
+- **Skill Plugin System** — hot-swappable vertical agent solutions (review reply, store health diagnosis) with isolated RAG collections and auto-discovery.
+- **MCP Protocol** — lightweight MCP client (JSON-RPC over stdio) supporting Filesystem and SQLite servers. External tools auto-register into the agent pool.
+- **5-tier Tool Calling** — 21 built-in tools + MCP tools across Read → Analyze → Retrieve → Generate → Write tiers. Privilege gating prevents unauthorized calls; write operations auto-escalate to HITL.
+- **Human-in-the-Loop** — pause-persist-resume workflow with SSE push to frontend. Supports approve, reject, and revise decisions.
+- **RAG Retrieval** — dual-channel (ChromaDB vector + keyword), three-tier knowledge sources (8 built-in SOPs, tenant documents, codebase AST), Redis caching with graceful fallback.
+- **Full Traceability** — per-node execution tracing with trace_id replay, SSE streaming, cost tracking per session.
+- **Zero-config Demo** — runs on SQLite without API key, Redis, or ChromaDB. Demo responses and mock data included.
 
-**Q: How do I add custom knowledge documents?**
+### Quick Start
 
-Place markdown files in `docs/knowledge/` and re-run `python -m app.scripts.ingest_knowledge`. Or upload PDF/DOCX/TXT/MD files via the frontend RAG panel or `POST /api/rag/upload`.
+```bash
+# Backend
+cd backend && pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --port 8000
 
-**Q: The database column error on startup?**
+# Frontend
+cd frontend && npm install && npm run dev
+```
 
-Delete `backend/aura.db` to force a clean schema creation, or the app will auto-patch missing columns on startup via `ensure_demo_schema()`.
+Open http://localhost:3000 and register an account to get started.
 
-## Contributing
+### Tech Stack
 
-Contributions are welcome. Please open an issue to discuss proposed changes before submitting a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines and [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md) for beginner-friendly tasks.
+| Layer | Technology |
+|---|---|
+| Agent | LangGraph, ReAct, Function Calling |
+| RAG | ChromaDB, sentence-transformers, keyword retrieval |
+| Backend | Python, FastAPI, SSE, SQLAlchemy |
+| Database | PostgreSQL / SQLite, Redis (optional) |
+| MCP | Custom lightweight MCP Client (JSON-RPC over stdio) |
+| Frontend | Vue 3, Vite 5, Pinia, ECharts 5, UnoCSS |
+| Deployment | Docker, Docker Compose |
+| LLM | DeepSeek API (OpenAI-compatible) |
 
-## License
+### Project Structure
 
-MIT License. See [LICENSE](LICENSE).
-
-## Screenshots
-
-![Reports Page](assets/readme/05-reports.png)
-
-![Products Page](assets/readme/06-products.png)
-
-![Stores Page](assets/readme/07-stores.png)
-
-![Marketing Page](assets/readme/08-marketing.png)
-
-![Finance Page](assets/readme/09-finance.png)
+```
+AuraSaaS/
+├── backend/
+│   ├── app/
+│   │   ├── agents/        # LangGraph workflow + ReAct Agent + Tool Calling
+│   │   ├── skills/        # Skill plugin system
+│   │   ├── mcp/           # MCP protocol adapter
+│   │   ├── api/           # FastAPI routes (14 modules)
+│   │   ├── services/      # LLM client, RAG, data cleaning
+│   │   ├── models/        # SQLAlchemy ORM (11 models)
+│   │   ├── core/          # Config, auth, rate limiting, observability
+│   │   └── tests/         # 105 tests, 7 modules
+│   ├── docs/knowledge/    # SOP knowledge documents (Markdown)
+│   ├── alembic/           # Database migrations
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── views/         # 12 pages
+│   │   ├── components/    # Shared components
+│   │   ├── composables/   # Composables
+│   │   ├── stores/        # Pinia stores
+│   │   └── utils/         # Request, markdown, i18n
+│   └── package.json
+├── docker-compose.yml
+└── README.md
+```

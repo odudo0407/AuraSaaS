@@ -222,10 +222,30 @@ def get_trends(days: int = Query(30, ge=7, le=90), store_id: int = Query(None), 
     """Return daily trend data. Optional store filtering."""
     today = _latest_date(db)
     start = today - datetime.timedelta(days=days - 1)
-    q = db.query(BusinessMetricsDaily).filter(BusinessMetricsDaily.date >= start, BusinessMetricsDaily.date <= today)
     if store_id:
-        q = q.filter(BusinessMetricsDaily.store_id == store_id)
-    rows = q.order_by(BusinessMetricsDaily.date).all()
+        rows = (
+            db.query(BusinessMetricsDaily)
+            .filter(BusinessMetricsDaily.date >= start, BusinessMetricsDaily.date <= today, BusinessMetricsDaily.store_id == store_id)
+            .order_by(BusinessMetricsDaily.date)
+            .all()
+        )
+    else:
+        rows = (
+            db.query(
+                BusinessMetricsDaily.date,
+                func.sum(BusinessMetricsDaily.revenue).label("revenue"),
+                func.sum(BusinessMetricsDaily.total_revenue).label("total_revenue"),
+                func.sum(BusinessMetricsDaily.order_count).label("order_count"),
+                func.avg(BusinessMetricsDaily.avg_ticket).label("avg_ticket"),
+                func.avg(BusinessMetricsDaily.avg_order_value).label("avg_order_value"),
+                func.sum(BusinessMetricsDaily.platform_commission).label("platform_commission"),
+                func.sum(BusinessMetricsDaily.net_profit).label("net_profit"),
+            )
+            .filter(BusinessMetricsDaily.date >= start, BusinessMetricsDaily.date <= today)
+            .group_by(BusinessMetricsDaily.date)
+            .order_by(BusinessMetricsDaily.date)
+            .all()
+        )
 
     return {
         "code": 0,
@@ -363,16 +383,30 @@ def get_heatmap(store_id: int = Query(None), db: Session = Depends(get_db)):
 @router.get("/traffic-heatmap")
 def get_traffic_heatmap(store_id: int = Query(None), days: int = Query(7, ge=1, le=30), db: Session = Depends(get_db)):
     """Return hour/day traffic heatmap data generated from daily order totals."""
-    # Find the latest date with data instead of using today
     latest = db.query(func.max(BusinessMetricsDaily.date)).scalar()
     if not latest:
         return {"code": 0, "data": [], "message": "ok"}
     end = latest
     start = end - datetime.timedelta(days=days - 1)
-    q = db.query(BusinessMetricsDaily).filter(BusinessMetricsDaily.date >= start, BusinessMetricsDaily.date <= end)
+
     if store_id:
-        q = q.filter(BusinessMetricsDaily.store_id == store_id)
-    rows = q.all()
+        rows = (
+            db.query(BusinessMetricsDaily)
+            .filter(BusinessMetricsDaily.date >= start, BusinessMetricsDaily.date <= end, BusinessMetricsDaily.store_id == store_id)
+            .order_by(BusinessMetricsDaily.date)
+            .all()
+        )
+    else:
+        rows = (
+            db.query(
+                BusinessMetricsDaily.date,
+                func.sum(BusinessMetricsDaily.order_count).label("order_count"),
+            )
+            .filter(BusinessMetricsDaily.date >= start, BusinessMetricsDaily.date <= end)
+            .group_by(BusinessMetricsDaily.date)
+            .order_by(BusinessMetricsDaily.date)
+            .all()
+        )
 
     # Deterministic hourly distribution based on date+hour hash
     heatmap = []

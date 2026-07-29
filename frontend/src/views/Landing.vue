@@ -1,17 +1,28 @@
 <template>
-  <div class="min-h-screen bg-[#fbfaf8] text-ink">
-    <header class="sticky top-0 z-40 border-b border-hairline bg-[#fbfaf8]/92 backdrop-blur">
+  <div
+    class="min-h-screen bg-[#fbfaf8] text-ink"
+    :style="{ paddingTop: headerHidden ? '0px' : '64px', transition: 'padding-top 0.3s ease' }"
+  >
+    <!-- Transparent trigger zone -->
+    <div
+      class="fixed top-0 left-0 right-0 h-16"
+      :class="headerHidden ? 'z-50 pointer-events-auto' : 'z-0 pointer-events-none'"
+      @mouseenter="onTriggerEnter"
+    />
+
+    <header
+      ref="headerRef"
+      class="fixed top-0 left-0 right-0 z-40 border-b border-hairline bg-[#fbfaf8]/92 backdrop-blur transition-transform duration-300"
+      :class="headerHidden ? 'pointer-events-none' : ''"
+      :style="{ transform: headerHidden ? 'translateY(-100%)' : 'translateY(0)' }"
+      @mouseleave="onHeaderLeave"
+    >
       <div class="mx-auto flex min-h-16 max-w-1200px flex-wrap items-center justify-between gap-3 px-6 py-2">
         <router-link to="/" class="flex items-center gap-3 no-underline">
           <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-ink text-white font-bold">A</span>
           <span class="text-xl font-bold text-ink">AuraSaaS</span>
         </router-link>
 
-        <nav class="hidden items-center gap-6 text-sm text-muted md:flex">
-          <a href="#agents" class="text-muted no-underline hover:text-ink">{{ copy.navAgents }}</a>
-          <a href="#ops" class="text-muted no-underline hover:text-ink">{{ copy.navOps }}</a>
-          <a href="#stack" class="text-muted no-underline hover:text-ink">{{ copy.navStack }}</a>
-        </nav>
 
         <div class="flex items-center gap-3">
           <div class="inline-flex rounded-xl border border-ink bg-white p-1 shadow-[0_8px_22px_rgba(34,34,34,0.08)]">
@@ -170,7 +181,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useLanguage } from '../utils/language'
@@ -178,6 +189,44 @@ import { useLanguage } from '../utils/language'
 const router = useRouter()
 const auth = useAuthStore()
 const { language, setLanguage } = useLanguage()
+
+const headerRef = ref(null)
+const headerHidden = ref(false)
+let lastScrollY = 0
+let scrollDirection = 'up'
+
+function onScroll() {
+  const currentY = window.scrollY
+  if (currentY <= 50) {
+    headerHidden.value = false
+  } else if (currentY > lastScrollY) {
+    scrollDirection = 'down'
+    headerHidden.value = true
+  } else if (currentY < lastScrollY) {
+    scrollDirection = 'up'
+    headerHidden.value = false
+  }
+  lastScrollY = currentY
+}
+
+function onTriggerEnter() {
+  headerHidden.value = false
+  scrollDirection = 'up'
+}
+
+function onHeaderLeave() {
+  if (window.scrollY > 50 && scrollDirection === 'down') {
+    headerHidden.value = true
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('scroll', onScroll, { passive: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', onScroll)
+})
 
 const languageOptions = [
   { value: 'zh', label: '中文' },

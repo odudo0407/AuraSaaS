@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { request } from '../utils/request'
@@ -193,9 +193,10 @@ const transactions_default = [
 
 async function renderChart() {
   if (!profitChart.value) return
-  if (!profitChartInstance) {
+  if (!profitChartInstance || profitChartInstance.isDisposed()) {
+    if (profitChartInstance && profitChartInstance.isDisposed()) profitChartInstance.dispose()
     profitChartInstance = echarts.init(profitChart.value)
-    new ResizeObserver(() => profitChartInstance?.resize()).observe(profitChart.value)
+    new ResizeObserver(() => { if (profitChartInstance && !profitChartInstance.isDisposed()) profitChartInstance.resize() }).observe(profitChart.value)
   }
   try {
     const params = ['days=90']
@@ -227,7 +228,7 @@ async function renderChart() {
         { name:'营收', type:'bar', data:revData, barWidth:20, itemStyle:{color:'#ffd1da'} },
         { name:'利润', type:'bar', data:profitData, barWidth:20, itemStyle:{color:'#ff385c'} },
       ]
-    })
+    }, { notMerge: true })
   } catch {
     profitChartInstance.setOption({
       backgroundColor: 'transparent',
@@ -239,7 +240,7 @@ async function renderChart() {
         { name:'营收', type:'bar', data:[280000,295000,310000,328000,328450], barWidth:20, itemStyle:{color:'#ffd1da'} },
         { name:'利润', type:'bar', data:[32000,35000,38000,42000,45230], barWidth:20, itemStyle:{color:'#ff385c'} },
       ]
-    })
+    }, { notMerge: true })
   }
 }
 
@@ -247,5 +248,10 @@ onMounted(() => {
   fetchFinance()
   fetchTransactions()
   renderChart()
+})
+
+onUnmounted(() => {
+  if (profitChartInstance && !profitChartInstance.isDisposed()) profitChartInstance.dispose()
+  profitChartInstance = null
 })
 </script>

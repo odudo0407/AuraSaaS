@@ -187,7 +187,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { useAuthStore } from '../stores/auth'
@@ -445,7 +445,7 @@ function renderChart() {
 }
 
 function updateChart() {
-  if (!chartInstance) return
+  if (!chartInstance || chartInstance.isDisposed()) return
   const dates = trendsData.value?.dates || Array.from({ length: activeDays.value }, (_, index) => `D${index + 1}`)
   const revenue = trendsData.value?.revenue || dates.map((_, index) => 18000 + Math.sin(index / 2) * 2800 + index * 170)
   chartInstance.setOption({
@@ -487,11 +487,16 @@ function updateChart() {
         },
       },
     ],
-  })
+  }, { notMerge: true })
 }
 
 onMounted(() => {
   renderChart()
   fetchAllData()
+})
+
+onUnmounted(() => {
+  if (chartInstance && !chartInstance.isDisposed()) chartInstance.dispose()
+  chartInstance = null
 })
 </script>

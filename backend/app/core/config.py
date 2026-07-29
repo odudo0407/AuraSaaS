@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     openai_api_base: str = "https://api.deepseek.com"
 
     database_url: str = "sqlite:///./aura.db"
+    redis_url: str = ""  # e.g. "redis://localhost:6379/0" — empty disables Redis (falls back to in-memory)
     chroma_dir: str = "./data/chroma"
     code_embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
     code_embedding_cache_dir: str = "./data/huggingface"
@@ -28,6 +29,9 @@ class Settings(BaseSettings):
 
     llm_timeout_seconds: int = 30
     llm_max_retries: int = 2
+
+    # MCP: JSON list of server configs, e.g. [{"name":"filesystem","command":["npx","-y","..."]}]
+    mcp_servers: str = ""
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),

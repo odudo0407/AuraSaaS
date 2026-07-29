@@ -1,0 +1,206 @@
+[
+  {
+    "question": "如何提升高毛利产品的曝光和转化率？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "爆款产品销量突然下降应该排查哪些方面？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "节假日客流上涨但利润没涨，可能是什么原因？",
+    "source": "holiday_marketing_playbook.md"
+  },
+  {
+    "question": "节假日营销前需要做哪些准备工作？",
+    "source": "holiday_marketing_playbook.md"
+  },
+  {
+    "question": "门店附近有音乐节或展会活动，怎么抓住短期客流？",
+    "source": "local_event_marketing_case.md"
+  },
+  {
+    "question": "本地活动结束后的复盘应该关注哪些指标？",
+    "source": "local_event_marketing_case.md"
+  },
+  {
+    "question": "门店最近客流持续下降，应该按什么顺序排查原因？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "低客流门店怎么通过套餐和活动拉回老客户？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "收到用户差评后应该怎么处理？标准流程是什么？",
+    "source": "negative_review_response_sop.md"
+  },
+  {
+    "question": "差评回复有哪些原则和话术可以参考？",
+    "source": "negative_review_response_sop.md"
+  },
+  {
+    "question": "新店开业前两周需要做哪些准备工作？",
+    "source": "new_store_launch_checklist.md"
+  },
+  {
+    "question": "新店开业后第一周需要每日复盘哪些核心指标？",
+    "source": "new_store_launch_checklist.md"
+  },
+  {
+    "question": "下雨天外卖运营需要注意什么？怎么调整菜单和配送？",
+    "source": "rainy_day_delivery_sop.md"
+  },
+  {
+    "question": "雨天外卖退单率超过多少算异常？怎么监控？",
+    "source": "rainy_day_delivery_sop.md"
+  },
+  {
+    "question": "外卖退单率太高怎么排查？从哪些维度分析？",
+    "source": "refund_rate_reduction_sop.md"
+  },
+  {
+    "question": "退单大多集中在哪些品类？怎么针对性治理？",
+    "source": "refund_rate_reduction_sop.md"
+  },
+  {
+    "question": "高毛利 SKU 缺货会带来什么连带风险？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "新店开业前三天要做哪些压力测试？",
+    "source": "new_store_launch_checklist.md"
+  },
+  {
+    "question": "差评应该按哪些类型进行分类？响应时限是多少？",
+    "source": "negative_review_response_sop.md"
+  },
+  {
+    "question": "退单治理中有哪些具体的降退单动作可以执行？",
+    "source": "refund_rate_reduction_sop.md"
+  },
+  {
+    "question": "最近店里生意不好，客流量少了退单还多了，我应该先做什么？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "店里没人来怎么办，急",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "毛利一直在掉，怎么判断是产品问题还是运营问题？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "怎么让贵的饮品卖得好一点",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "节假日想搞活动冲销量，但又怕利润太低，怎么平衡？",
+    "source": "holiday_marketing_playbook.md"
+  },
+  {
+    "question": "退单退得我头疼，到底哪里出了问题",
+    "source": "refund_rate_reduction_sop.md"
+  },
+  {
+    "question": "天气不好的时候怎么做外卖才能不亏钱？",
+    "source": "rainy_day_delivery_sop.md"
+  },
+  {
+    "question": "下雨天客流量少了，怎么用外卖补回来？",
+    "source": "rainy_day_delivery_sop.md"
+  },
+  {
+    "question": "客户说外卖洒了、凉了、还晚了，怎么回复？",
+    "source": "negative_review_response_sop.md"
+  },
+  {
+    "question": "新店开业赶上节假日，营销上有什么特别要注意的？",
+    "source": "holiday_marketing_playbook.md"
+  },
+  {
+    "question": "给老客户发优惠券，怎么发效果最好？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "怎么做套餐搭配才能保证利润不被折扣吃掉",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "为什么不能用全场大额折扣来拉销量？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "收银台和点单页应该优先展示哪些产品？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "怎么防止爆款产品因为缺货变成差评？",
+    "source": "high_margin_sku_strategy.md"
+  },
+  {
+    "question": "节假日为什么要缩短菜单、隐藏部分SKU？",
+    "source": "holiday_marketing_playbook.md"
+  },
+  {
+    "question": "节日高峰时段怎么防止顾客排队等太久流失掉？",
+    "source": "holiday_marketing_playbook.md"
+  },
+  {
+    "question": "景区附近的门店应该怎么设计套餐和包装？",
+    "source": "local_event_marketing_case.md"
+  },
+  {
+    "question": "怎么把参加音乐节的游客转化成我们店的常客？",
+    "source": "local_event_marketing_case.md"
+  },
+  {
+    "question": "企业团购和批量预订适合什么场景？怎么推？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "下午两点到五点没什么客人，怎么提高这个时段的收入？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "差评处理完以后怎么防止同类问题再出现？",
+    "source": "negative_review_response_sop.md"
+  },
+  {
+    "question": "回复差评时最忌讳的是什么？",
+    "source": "negative_review_response_sop.md"
+  },
+  {
+    "question": "新店试营业期间排班有什么讲究？",
+    "source": "new_store_launch_checklist.md"
+  },
+  {
+    "question": "开业前怎么在周边社区做预热推广？",
+    "source": "new_store_launch_checklist.md"
+  },
+  {
+    "question": "暴雨预警发布后外卖要提前准备好哪些物料？",
+    "source": "rainy_day_delivery_sop.md"
+  },
+  {
+    "question": "雨天出餐的优先级应该怎么排？热饮还是冷饮先做？",
+    "source": "rainy_day_delivery_sop.md"
+  },
+  {
+    "question": "超时订单怎么提前安抚客户避免差评和退单？",
+    "source": "refund_rate_reduction_sop.md"
+  },
+  {
+    "question": "怎么区分退单原因是门店问题还是配送问题？",
+    "source": "refund_rate_reduction_sop.md"
+  },
+  {
+    "question": "店开了三个月一直不温不火，从哪入手改善？",
+    "source": "low_traffic_store_recovery.md"
+  },
+  {
+    "question": "怎么让顾客结账时愿意多加点东西",
+    "source": "high_margin_sku_strategy.md"
+  }
+]

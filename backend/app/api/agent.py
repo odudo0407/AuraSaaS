@@ -47,6 +47,9 @@ class ReactRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     history: Optional[list[dict]] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
 
 
 class AgentFormPreviewRequest(BaseModel):
@@ -82,29 +85,51 @@ async def stream_diagnose(
 async def stream_auto(body: ReactRequest):
     """Auto-route to LangGraph or ReAct based on query intent.
 
-    High-risk intents (marketing, report, anomaly, store ops, finance, competitor)
-    go through the LangGraph pipeline with HITL approval.
-    Quick queries (data, knowledge, chat, customer insights) use the ReAct agent.
+    Accepts optional api_key / base_url / model from the frontend Settings page.
+    When provided, they override the server-level .env configuration.
     """
+    from app.services.deepseek_client import set_request_context, clear_request_context
+
+    set_request_context(api_key=body.api_key, base_url=body.base_url, model=body.model)
+
+    async def _wrap(gen):
+        try:
+            async for event in gen:
+                yield event
+        except Exception as exc:
+            import json, logging
+            logging.getLogger(__name__).exception("Agent stream crashed")
+            yield json.dumps({
+                "type": "error", "node": "report_generator",
+                "title": "❌ 执行异常", "content": f"Agent 执行异常: {exc}",
+                "done": True,
+            }, ensure_ascii=False)
+            yield json.dumps({
+                "type": "end", "node": "end",
+                "done": True, "content": "",
+            }, ensure_ascii=False)
+        finally:
+            clear_request_context()
+
     route = _route_intent(body.query)
     if route == "langgraph":
         return EventSourceResponse(
-            run_agent_stream(
+            _wrap(run_agent_stream(
                 body.query,
                 store_id=body.store_id,
                 start_date=body.start_date,
                 end_date=body.end_date,
-            ),
+            )),
             media_type="text/event-stream; charset=utf-8",
         )
     return EventSourceResponse(
-        run_react_agent_stream(
+        _wrap(run_react_agent_stream(
             body.query,
             store_id=body.store_id,
             start_date=body.start_date,
             end_date=body.end_date,
             history=body.history,
-        ),
+        )),
         media_type="text/event-stream; charset=utf-8",
     )
 

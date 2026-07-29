@@ -26,8 +26,8 @@ def test_build_graph_has_all_nodes():
     from app.agents.graph import build_graph
     graph = build_graph()
     nodes = set(graph.nodes.keys())
-    expected = {"__start__", "intent_router", "data_analyst", "data_editor",
-                "fetch_context", "rag_strategist", "risk_controller",
+    expected = {"__start__", "intent_router", "skill_executor", "data_analyst",
+                "data_editor", "fetch_context", "rag_strategist", "risk_controller",
                 "human_approval", "general_chat", "report_generator"}
     assert nodes == expected
 

@@ -5,7 +5,7 @@ import { request } from '../utils/request'
 export const useUserProfileStore = defineStore('userProfile', () => {
   const avatarUrl = ref(localStorage.getItem('aura_avatarUrl') || '')
   const selectedStoreId = ref(localStorage.getItem('aura_selectedStoreId') || null)
-  const selectedModel = ref(localStorage.getItem('aura_model') || 'deepseek-chat')
+  const selectedModel = ref(localStorage.getItem('aura_model') || 'deepseek-v4-pro')
 
   // Persist to localStorage on change
   watch(avatarUrl, (val) => localStorage.setItem('aura_avatarUrl', val))
