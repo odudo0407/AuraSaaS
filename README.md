@@ -2,6 +2,8 @@
 
 面向连锁门店经营分析的 AI Agent 平台。基于 LangGraph 工作流与 ReAct Agent 双模式智能体引擎，融合 RAG 知识检索、Skill 插件体系、MCP 协议接入和 HITL 人工审批，实现从数据查询到策略生成的完整闭环。
 
+![AuraSaaS Dashboard](assets/readme/01-dashboard-overview.png)
+
 [English](#english)
 
 ---
@@ -56,6 +58,8 @@ graph TD
     G --> E
     H --> E
 ```
+
+![Agent Pipeline](assets/readme/02-agent-pipeline.png)
 
 ---
 
@@ -115,6 +119,8 @@ graph TD
 - 令牌桶限流、数据库连接池、JWT 鉴权
 - 全组件支持降级：无 API Key / 无 Redis / 无 ChromaDB / 无 PostgreSQL 均可运行
 - SQLite 零配置启动，内置中文 Demo 回答
+
+![AI Analysis Page](assets/readme/03-ai-analysis-page.png)
 
 ---
 
@@ -312,3 +318,18 @@ AuraSaaS/
 ├── docker-compose.yml
 └── README.md
 ```
+
+
+## Screenshots
+
+![Reports](assets/readme/05-reports.png)
+
+![Products](assets/readme/06-products.png)
+
+![Stores](assets/readme/07-stores.png)
+
+![Marketing](assets/readme/08-marketing.png)
+
+![Finance](assets/readme/09-finance.png)
+
+![Profile](assets/readme/10.png)
