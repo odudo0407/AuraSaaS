@@ -214,7 +214,7 @@ AuraSaaS/
 │   │   ├── services/            # LLM 客户端、RAG、数据清洗、Agent 表单
 │   │   ├── models/              # SQLAlchemy ORM（11 个模型）
 │   │   ├── core/                # 配置、鉴权、限流、Redis、可观测性
-│   │   └── tests/               # 测试（105 tests, 7 modules）
+│   │   └── tests/               # 测试（118 tests, 7 modules）
 │   ├── docs/knowledge/          # SOP 知识文档（Markdown）
 │   ├── alembic/                 # 数据库迁移脚本
 │   └── requirements.txt
@@ -303,7 +303,7 @@ AuraSaaS/
 │   │   ├── services/      # LLM client, RAG, data cleaning
 │   │   ├── models/        # SQLAlchemy ORM (11 models)
 │   │   ├── core/          # Config, auth, rate limiting, observability
-│   │   └── tests/         # 105 tests, 7 modules
+│   │   └── tests/         # 118 tests, 7 modules
 │   ├── docs/knowledge/    # SOP knowledge documents (Markdown)
 │   ├── alembic/           # Database migrations
 │   └── requirements.txt
