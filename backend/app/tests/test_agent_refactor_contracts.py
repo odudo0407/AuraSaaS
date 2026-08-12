@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "backend"))
+
 from app.agents import tools
 from app.agents.graph import build_graph
 from app.agents.nodes import data_analysis

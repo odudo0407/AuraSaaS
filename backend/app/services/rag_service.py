@@ -25,7 +25,7 @@ _COLLECTION_NAME = "aurasaas_knowledge_v2"
 def _get_ef():
     try:
         import os
-        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
         from chromadb.utils import embedding_functions
         return embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name="BAAI/bge-small-zh-v1.5",

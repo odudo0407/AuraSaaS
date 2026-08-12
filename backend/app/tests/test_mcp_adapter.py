@@ -1,5 +1,11 @@
 """Tests for MCP Tool → Agent Tool adapter."""
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "backend"))
+
 import pytest
 from app.mcp.adapter import (
     mcp_tool_to_agent_schema,

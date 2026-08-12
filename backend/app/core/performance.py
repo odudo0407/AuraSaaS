@@ -161,7 +161,10 @@ def _report(func_name: str, elapsed_s: float, ctx: _PerfContext,
         extra_parts.append(" | ".join(f"{k}={v}" for k, v in ctx.extra_metrics.items()))
 
     extra_str = (" | " + " | ".join(extra_parts)) if extra_parts else ""
-    print(f"[{ts}] {func_name} | 耗时: {record['elapsed_seconds']}s{extra_str}")
+    try:
+        print(f"[{ts}] {func_name} | elapsed: {record['elapsed_seconds']}s{extra_str}")
+    except UnicodeEncodeError:
+        print(f"[{ts}] {func_name} | elapsed: {record['elapsed_seconds']}s")
 
     # JSON log file
     _get_logger().info(json.dumps(record, ensure_ascii=False))
